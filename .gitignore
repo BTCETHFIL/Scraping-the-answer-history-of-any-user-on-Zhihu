@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.whl
+
+# 爬虫输出 & 敏感数据（整目录忽略）
+output/
+browser_data/
+
+# 环境 & 个人配置
+.env
+.env.*
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
+
+# 个人配置文件（含本地 Chrome 路径等）
+config.json
+
+# ── id_list.json 需要跟踪（用户 ID 列表，无敏感数据）──

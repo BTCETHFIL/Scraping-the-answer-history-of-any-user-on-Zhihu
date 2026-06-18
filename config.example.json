@@ -1,0 +1,22 @@
+{
+  "_comment": "复制此文件为 config.json 并填入你的配置",
+  "targets": [
+    "https://www.zhihu.com/people/example-user-id"
+  ],
+  "max_answers": 0,
+  "test_mode": false,
+  "output_dir": "output",
+  "scroll_delay_min": 2.0,
+  "scroll_delay_max": 5.0,
+  "page_delay_min": 3.0,
+  "page_delay_max": 8.0,
+  "headless": false,
+  "browser_data_dir": "browser_data",
+  "chrome_exe": "",
+  "download_images": true,
+  "embed_images": true,
+  "screenshot_mode": true,
+  "save_html": false,
+  "forensic_mode": true,
+  "filename_template": "{date}_{title}.md"
+}
