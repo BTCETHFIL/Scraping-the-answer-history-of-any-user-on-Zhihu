@@ -213,6 +213,20 @@ class ZhihuCrawlerGUI:
         self._page_max.insert(0, "8")
         self._page_max.pack(side=tk.LEFT)
 
+        row_d3 = ttk.Frame(delay_frame)
+        row_d3.pack(fill=tk.X, pady=2)
+        ttk.Label(row_d3, text="缓存有效期(分):", width=12).pack(side=tk.LEFT)
+        self._cache_ttl = ttk.Entry(row_d3, width=5)
+        self._cache_ttl.insert(0, "30")
+        self._cache_ttl.pack(side=tk.LEFT)
+        ttk.Label(row_d3, text="0=禁用", foreground="gray").pack(side=tk.LEFT, padx=4)
+
+        row_d4 = ttk.Frame(delay_frame)
+        row_d4.pack(fill=tk.X, pady=2)
+        self._force_no_cache_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(row_d4, text="🔄 强制忽略缓存（测试用：跳过所有缓存+进度，从头重爬）",
+                        variable=self._force_no_cache_var).pack(side=tk.LEFT)
+
         # ── 操作控制 ──
         action_frame = ttk.LabelFrame(left_frame, text="操作", padding=6)
         action_frame.pack(fill=tk.X, pady=(8, 0))
@@ -464,6 +478,9 @@ class ZhihuCrawlerGUI:
         self._page_min.insert(0, str(int(self._cfg.page_delay_min)))
         self._page_max.delete(0, tk.END)
         self._page_max.insert(0, str(int(self._cfg.page_delay_max)))
+        self._cache_ttl.delete(0, tk.END)
+        self._cache_ttl.insert(0, str(self._cfg.cache_ttl_minutes))
+        self._force_no_cache_var.set(self._cfg.force_no_cache)
 
     def _read_config_from_ui(self):
         """从 UI 读取配置，更新 Config 对象"""
@@ -476,10 +493,12 @@ class ZhihuCrawlerGUI:
             ('scroll_delay_max', self._scroll_max),
             ('page_delay_min', self._page_min),
             ('page_delay_max', self._page_max),
+            ('cache_ttl_minutes', self._cache_ttl),
         ]:
             try:
                 v = float(widget.get().strip() or 0)
-                setattr(self._cfg, attr, int(v) if attr == 'max_answers' else v)
+                setattr(self._cfg, attr,
+                        int(v) if attr in ('max_answers', 'cache_ttl_minutes') else v)
             except ValueError:
                 pass
 
@@ -493,6 +512,7 @@ class ZhihuCrawlerGUI:
         self._cfg.test_mode = self._test_var.get()
         self._cfg.forensic_mode = self._forensic_var.get()
         self._cfg.save_html = self._save_html_var.get()
+        self._cfg.force_no_cache = self._force_no_cache_var.get()
         # 法务模式自动开启 save_html
         if self._cfg.forensic_mode:
             self._cfg.save_html = True
@@ -591,6 +611,8 @@ class ZhihuCrawlerGUI:
         self._log(f"🔒 法务证据模式: {'是（HTML + 证据报告 + SHA256）' if self._cfg.forensic_mode else '否'}", 'info')
         if self._cfg.test_mode:
             self._log(f"🧪 测试模式: 开启（最多5条）", 'info')
+        if self._cfg.force_no_cache:
+            self._log(f"🔄 强制忽略缓存: 开启（跳过所有缓存+进度）", 'info')
         self._log(f"{'='*55}\n", 'dim')
 
         # 检查 Chrome

@@ -73,7 +73,10 @@ def extract_answer_meta(html: str) -> dict:
     author_el = soup.select_one('.AuthorInfo-name, .UserLink-link, '
                                  '[class*="AuthorInfo"], [itemprop="author"]')
     if author_el:
-        meta['author'] = author_el.get_text(strip=True)
+        author = author_el.get_text(strip=True)
+        # 清除被嵌套「关注」按钮带入的文字（如"祈祈关注"→"祈祈"）
+        author = re.sub(r'关注\s*$', '', author).strip()
+        meta['author'] = author
 
     # 赞同数
     vote_el = soup.select_one('.VoteButton--up, [class*="VoteButton--up"], '
@@ -89,28 +92,34 @@ def extract_answer_meta(html: str) -> dict:
                 meta['upvotes'] = int(vs)
 
     # 评论数（多策略提取）
+    comment_el = None
     for selector in [
-        'button:has-text("评论")',
         '[class*="CommentButton"]',
         '[class*="comments-count"]',
         '[aria-label*="评论"]',
     ]:
         comment_el = soup.select_one(selector)
         if comment_el:
-            ct = comment_el.get_text(strip=True)
-            # 匹配数字（可能含"条评论"或"评论"前缀）
-            m = re.search(r'([\d,.万]+)\s*(?:条)?评论?', ct)
-            if not m:
-                # 纯数字
-                m = re.search(r'[\d,.万]+', ct)
-            if m:
-                v = m.group(1) if m.lastindex else m.group()
-                v = v.replace(',', '')
-                if '万' in v:
-                    meta['comment_count'] = int(float(v.replace('万', '')) * 10000)
-                else:
-                    meta['comment_count'] = int(float(v))
             break
+    # fallback: BS4 不支持 :has-text，用 find 搜索含"评论"的按钮
+    if not comment_el:
+        comment_el = soup.find('button', string=re.compile(r'\d.*评论|评论.*\d'))
+        if not comment_el:
+            comment_el = soup.find('button', text=re.compile(r'评论'))
+    if comment_el:
+        ct = comment_el.get_text(strip=True)
+        # 匹配数字（可能含"条评论"或"评论"前缀）
+        m = re.search(r'([\d,.万]+)\s*(?:条)?评论?', ct)
+        if not m:
+            # 纯数字
+            m = re.search(r'[\d,.万]+', ct)
+        if m:
+            v = m.group(1) if m.lastindex else m.group()
+            v = v.replace(',', '')
+            if '万' in v:
+                meta['comment_count'] = int(float(v.replace('万', '')) * 10000)
+            else:
+                meta['comment_count'] = int(float(v))
 
     # 日期（多策略提取，支持完整时间）
     from utils import extract_date_from_html

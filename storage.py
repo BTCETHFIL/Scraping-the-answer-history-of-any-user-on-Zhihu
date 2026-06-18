@@ -299,6 +299,85 @@ def save_index(output_dir: Path, answers_meta: list):
     index_path.write_text('\n'.join(header + all_lines), encoding='utf-8')
 
 
+# ── 短时缓存：避免短时间内重复网络请求 ──
+
+def _cache_dir(output_dir: Path) -> Path:
+    d = output_dir / "cache"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def load_links_cache(output_dir: Path, user_id: str) -> list | None:
+    """加载缓存的回答链接列表，过期返回 None"""
+    if config.force_no_cache or not config.cache_ttl_minutes:
+        return None
+    cache_file = _cache_dir(output_dir) / "links.json"
+    if not cache_file.exists():
+        return None
+    try:
+        data = json.loads(cache_file.read_text(encoding='utf-8'))
+        age = time.time() - data.get('fetched_at', 0)
+        ttl = config.cache_ttl_minutes * 60
+        if age < ttl:
+            print(f"  📦 使用缓存的链接列表（{age:.0f}秒前，TTL={config.cache_ttl_minutes}分钟）")
+            return data.get('items', [])
+        else:
+            print(f"  ⏰ 链接缓存已过期（{age:.0f}秒 > {ttl}秒）")
+    except Exception:
+        pass
+    return None
+
+
+def save_links_cache(output_dir: Path, user_id: str, items: list):
+    """缓存回答链接列表"""
+    if not config.cache_ttl_minutes:
+        return
+    cache_file = _cache_dir(output_dir) / "links.json"
+    data = {
+        'user_id': user_id,
+        'fetched_at': time.time(),
+        'ttl_minutes': config.cache_ttl_minutes,
+        'count': len(items),
+        'items': items,
+    }
+    cache_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+
+
+def load_answer_cache(output_dir: Path, answer_id: str) -> dict | None:
+    """加载缓存的回答内容，过期返回 None"""
+    if config.force_no_cache or not config.cache_ttl_minutes:
+        return None
+    cache_file = _cache_dir(output_dir) / f"{answer_id}.json"
+    if not cache_file.exists():
+        return None
+    try:
+        data = json.loads(cache_file.read_text(encoding='utf-8'))
+        age = time.time() - data.get('fetched_at', 0)
+        ttl = config.cache_ttl_minutes * 60
+        if age < ttl:
+            return data.get('result')
+        else:
+            # 不打印单条过期日志，太吵
+            pass
+    except Exception:
+        pass
+    return None
+
+
+def save_answer_cache(output_dir: Path, answer_id: str, result: dict):
+    """缓存回答内容"""
+    if not config.cache_ttl_minutes:
+        return
+    cache_file = _cache_dir(output_dir) / f"{answer_id}.json"
+    data = {
+        'answer_id': answer_id,
+        'fetched_at': time.time(),
+        'ttl_minutes': config.cache_ttl_minutes,
+        'result': result,
+    }
+    cache_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+
+
 def _sha256_file(filepath: Path) -> str:
     """计算文件的 SHA-256 哈希（16进制小写）"""
     h = hashlib.sha256()
@@ -310,13 +389,15 @@ def _sha256_file(filepath: Path) -> str:
 
 def save_evidence_report(output_dir: Path, user_id: str,
                          all_meta: list, file_map: dict,
-                         stats: dict):
+                         stats: dict, user_profile: dict = None):
     """
     生成电子证据采集报告 (EVIDENCE_REPORT.md)
     - 采集时间、工具、模式
+    - 用户基本信息 + 影响力数据（关注者/赞同/收藏等）
     - 完整文件清单（扫描全部 MD 文件）+ SHA-256 哈希
     - 统计摘要
     """
+    user_profile = user_profile or {}
     now = time.strftime('%Y-%m-%d %H:%M:%S')
     col_mode = "混合模式（截图+文字+base64图片嵌入）"
 
@@ -352,6 +433,22 @@ def save_evidence_report(output_dir: Path, user_id: str,
     lines.append(f"| 用户主页 | https://www.zhihu.com/people/{user_id} |")
     lines.append(f"| 采集模式 | {col_mode} |")
     lines.append(f"| 输出目录 | `{output_dir.resolve()}` |")
+    lines.append("")
+    lines.append("## 用户影响力数据")
+    lines.append("")
+    lines.append(f"| 指标 | 数值 |")
+    lines.append(f"|------|------|")
+    lines.append(f"| 昵称 | {user_profile.get('nickname', user_id)} |")
+    lines.append(f"| 关注者 | {user_profile.get('followers', 0):,} |")
+    lines.append(f"| 关注了 | {user_profile.get('following', 0):,} |")
+    lines.append(f"| 获得赞同 | {user_profile.get('upvotes_received', 0):,} |")
+    lines.append(f"| 获得喜欢 | {user_profile.get('likes_received', 0):,} |")
+    lines.append(f"| 被收藏 | {user_profile.get('collections', 0):,} |")
+    lines.append(f"| 回答数 | {user_profile.get('answers_count', 0):,} |")
+    lines.append(f"| 文章数 | {user_profile.get('articles_count', 0):,} |")
+    bio = user_profile.get('bio', '')
+    if bio:
+        lines.append(f"| 简介 | {bio} |")
     lines.append("")
     lines.append("## 文件清单")
     lines.append("")

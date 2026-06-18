@@ -39,6 +39,10 @@ class Config:
     # ── 法务证据模式 ──
     forensic_mode: bool = True     # 法务模式：默认保存HTML、生成证据报告、文件SHA256哈希
 
+    # ── 缓存设置 ──
+    cache_ttl_minutes: int = 30    # 重复爬取间隔内不重新获取（0=禁用缓存）
+    force_no_cache: bool = False   # 强制忽略所有缓存+进度，从头重新爬取
+
     # ── 输出文件名模板 ──
     # 可用变量: {date}, {title}, {upvotes}, {answer_id}
     filename_template: str = "{date}_{title}.md"

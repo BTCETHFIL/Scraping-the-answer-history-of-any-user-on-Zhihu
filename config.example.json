@@ -18,5 +18,7 @@
   "screenshot_mode": true,
   "save_html": false,
   "forensic_mode": true,
+  "cache_ttl_minutes": 30,
+  "force_no_cache": false,
   "filename_template": "{date}_{title}.md"
 }

@@ -10,6 +10,7 @@ import random
 from pathlib import Path
 from urllib.parse import urljoin
 
+from bs4 import BeautifulSoup
 from playwright.sync_api import Page, BrowserContext
 
 from config import config
@@ -17,7 +18,9 @@ from converter import html_to_md, extract_answer_meta
 from storage import (
     save_answer, save_progress, load_progress,
     save_index, download_images, embed_images_base64,
-    check_missing_files
+    check_missing_files,
+    load_links_cache, save_links_cache,
+    load_answer_cache, save_answer_cache,
 )
 from utils import (
     random_delay, extract_user_id,
@@ -33,6 +36,16 @@ def collect_answer_links(page: Page, user_id: str, max_answers: int = 0) -> list
     """
     answers_url = f"https://www.zhihu.com/people/{user_id}/answers"
     print(f"\n📋 正在加载回答列表: {answers_url}")
+
+    # 短时缓存检查：先看是否有未过期的链接缓存
+    from utils import get_output_path
+    cached = load_links_cache(get_output_path(config.output_dir, user_id), user_id)
+    if cached:
+        # 已缓存：直接返回（如果限定了 max_answers 则截断）
+        if max_answers > 0 and len(cached) > max_answers:
+            cached = cached[:max_answers]
+        print(f"✅ 使用缓存链接: {len(cached)} 条")
+        return cached
 
     page.goto(answers_url, wait_until="domcontentloaded")
     time.sleep(3)
@@ -115,10 +128,16 @@ def collect_answer_links(page: Page, user_id: str, max_answers: int = 0) -> list
                 # 提取评论数（列表页）
                 comment_count = 0
                 try:
-                    comment_el = card.query_selector(
-                        '[class*="CommentButton"], '
-                        'button:has-text("评论")'
-                    )
+                    comment_el = card.query_selector('[class*="CommentButton"]')
+                    if not comment_el:
+                        # :has-text 不被 query_selector 支持，手动搜索含"评论"的按钮
+                        for btn in card.query_selector_all('button'):
+                            try:
+                                if btn.is_visible() and '评论' in (btn.inner_text() or ''):
+                                    comment_el = btn
+                                    break
+                            except Exception:
+                                pass
                     if comment_el:
                         ct = comment_el.inner_text().strip() or '0'
                         m_c = re.search(r'[\d,.万]+', ct)
@@ -177,12 +196,12 @@ def collect_answer_links(page: Page, user_id: str, max_answers: int = 0) -> list
 
         # 也可以尝试点击"加载更多"按钮
         try:
-            load_more = page.query_selector(
+            load_more = page.locator(
                 'button:has-text("加载更多"), '
                 '[class*="PaginationButton"], '
                 '.List-footer button'
-            )
-            if load_more and load_more.is_visible():
+            ).first
+            if load_more.count() > 0 and load_more.is_visible():
                 load_more.click()
                 time.sleep(1)
         except Exception:
@@ -191,6 +210,9 @@ def collect_answer_links(page: Page, user_id: str, max_answers: int = 0) -> list
         scroll_attempts += 1
 
     print(f"✅ 共收集 {len(collected)} 条回答链接")
+    # 缓存链接列表
+    from utils import get_output_path as _gop
+    save_links_cache(_gop(config.output_dir, user_id), user_id, collected)
     return collected
 
 
@@ -221,12 +243,12 @@ def crawl_answer(page: Page, item: dict) -> dict:
 
         # 展开折叠内容（阅读全文）
         try:
-            expand_btn = page.query_selector(
+            expand_btn = page.locator(
                 'button:has-text("阅读全文"), '
                 '.RichContent-uncollapse, '
                 '[class*="expand"], [class*="unfold"]'
-            )
-            if expand_btn and expand_btn.is_visible():
+            ).first
+            if expand_btn.count() > 0 and expand_btn.is_visible():
                 expand_btn.click()
                 time.sleep(1)
         except Exception:
@@ -298,12 +320,12 @@ def crawl_answer_screenshot(page: Page, item: dict) -> dict:
 
         # 展开折叠内容
         try:
-            expand_btn = page.query_selector(
+            expand_btn = page.locator(
                 'button:has-text("阅读全文"), '
                 '.RichContent-uncollapse, '
                 '[class*="expand"], [class*="unfold"]'
-            )
-            if expand_btn and expand_btn.is_visible():
+            ).first
+            if expand_btn.count() > 0 and expand_btn.is_visible():
                 expand_btn.click()
                 time.sleep(1.5)
         except Exception:
@@ -391,10 +413,57 @@ def crawl_answer_screenshot(page: Page, item: dict) -> dict:
         }
 
 
-def crawl_answer_combined(page: Page, item: dict) -> dict:
+def _capture_answer_area(page: Page) -> bytes:
+    """
+    截取知乎回答页的内容区：问题标题 + 回答正文（排除右侧栏和无关元素）
+    策略：先尝试定位内容容器，失败则用 clip 拼接，最终回退整页截图
+    """
+    # 策略1：查找主内容列容器
+    content_selectors = [
+        '.Question-mainColumn',
+        '.Question-main',
+        '[class*="QuestionPage-main"]',
+        '.SearchMain',
+    ]
+    for sel in content_selectors:
+        try:
+            el = page.query_selector(sel)
+            if el and el.is_visible():
+                return el.screenshot(type='png')
+        except Exception:
+            pass
+
+    # 策略2：拼接"问题标题 + 回答卡片"的 bounding box 做 clip
+    try:
+        q_header = page.query_selector(
+            '.QuestionHeader, .QuestionHeader-main, '
+            '[class*="QuestionHeader"], [class*="question-header"]'
+        )
+        a_card = page.query_selector(
+            '.AnswerItem, .AnswerCard, [class*="AnswerItem"], '
+            '[class*="answer-item"]'
+        )
+        if q_header and a_card:
+            qb = q_header.bounding_box()
+            ab = a_card.bounding_box()
+            if qb and ab:
+                x = min(qb['x'], ab['x'])
+                y = qb['y']
+                w = max(qb['x'] + qb['width'], ab['x'] + ab['width']) - x
+                h = ab['y'] + ab['height'] - y
+                return page.screenshot(clip={'x': x, 'y': y, 'width': w, 'height': h}, type='png')
+    except Exception:
+        pass
+
+    # 策略3：回退整页截图
+    return page.screenshot(full_page=True, type='png')
+
+
+def crawl_answer_combined(page: Page, item: dict,
+                         user_profile: dict = None) -> dict:
     """
     混合模式：一次页面访问，同时获取截图 + 文字（含内嵌图片）
-    上半部分 = 整页截图（保留原始排版），下半部分 = 可搜索/复制的文字
+    上半部分 = 内容区截图（问题+回答，排除右侧栏），下半部分 = 可搜索/复制的文字
     返回 {meta, md_text, screenshot_base64, html_text}
     """
     answer_id = item['answer_id']
@@ -419,12 +488,12 @@ def crawl_answer_combined(page: Page, item: dict) -> dict:
 
         # ── 2. 展开折叠内容 ──
         try:
-            expand_btn = page.query_selector(
+            expand_btn = page.locator(
                 'button:has-text("阅读全文"), '
                 '.RichContent-uncollapse, '
                 '[class*="expand"], [class*="unfold"]'
-            )
-            if expand_btn and expand_btn.is_visible():
+            ).first
+            if expand_btn.count() > 0 and expand_btn.is_visible():
                 expand_btn.click()
                 time.sleep(1.5)
         except Exception:
@@ -437,8 +506,8 @@ def crawl_answer_combined(page: Page, item: dict) -> dict:
             pass
         time.sleep(1)
 
-        # ── 4. 全页截图 ──
-        screenshot_bytes = page.screenshot(full_page=True, type='png')
+        # ── 4. 截图：仅问题+回答内容区（排除右侧栏）──
+        screenshot_bytes = _capture_answer_area(page)
         screenshot_b64 = base64.b64encode(screenshot_bytes).decode('ascii')
 
         # ── 5. 提取文字内容 ──
@@ -486,12 +555,37 @@ def crawl_answer_combined(page: Page, item: dict) -> dict:
         if crawl_time:
             lines.append(f"> 🕒 证据采集时间: {crawl_time}")
         lines.append(f"> 🔗 原文链接: [{url}]({url})")
+
+        # 用户影响力数据
+        if user_profile:
+            parts = []
+            up_rcv = user_profile.get('upvotes_received', 0)
+            if up_rcv:
+                parts.append(f"赞同 {up_rcv:,}")
+            fl_ers = user_profile.get('followers', 0)
+            if fl_ers:
+                parts.append(f"关注者 {fl_ers:,}")
+            fl_ing = user_profile.get('following', 0)
+            if fl_ing:
+                parts.append(f"关注了 {fl_ing:,}")
+            likes = user_profile.get('likes_received', 0)
+            if likes:
+                parts.append(f"喜欢 {likes:,}")
+            colls = user_profile.get('collections', 0)
+            if colls:
+                parts.append(f"收藏 {colls:,}")
+            answers = user_profile.get('answers_count', 0)
+            if answers:
+                parts.append(f"回答 {answers:,}")
+            if parts:
+                lines.append(f"> 📊 用户影响力: {' · '.join(parts)}")
+
         lines.append("")
         lines.append("---")
         lines.append("")
         lines.append("## 📸 原页面截图")
         lines.append("")
-        lines.append(f"![整页截图](data:image/png;base64,{screenshot_b64})")
+        lines.append(f"![问题与回答截图](data:image/png;base64,{screenshot_b64})")
         lines.append("")
         lines.append("---")
         lines.append("")
@@ -586,6 +680,14 @@ def crawl_user_answers(page: Page, user_id: str,
     existing, missing, _ = check_missing_files(output_dir)
     completed_set = load_progress(output_dir)
 
+    # 强制忽略缓存：清空进度，从头重爬
+    if config.force_no_cache:
+        if completed_set:
+            print(f"🔄 强制忽略缓存：已清除 {len(completed_set)} 条进度记录，将全部重新爬取")
+            completed_set = set()
+            # 同时清空 force_recrawl_ids，避免双重提示
+            force_recrawl_ids = None
+
     # 强制重新爬取：把 force_recrawl_ids 从 completed_set 中移除
     if force_recrawl_ids:
         removed = completed_set & force_recrawl_ids
@@ -606,6 +708,9 @@ def crawl_user_answers(page: Page, user_id: str,
 
     print("🎯 混合模式：截图(保留原文排版) + 文字(可搜索/复制) + base64图片嵌入")
     print()
+
+    # 采集用户影响力数据（每条 MD 都会记录）
+    user_profile = scrape_user_profile(page, user_id)
 
     print(f"📁 输出目录: {output_dir}")
     print(f"📋 已完成: {len(completed_set)} 条"
@@ -630,7 +735,16 @@ def crawl_user_answers(page: Page, user_id: str,
     for i, item in enumerate(new_items):
         print(f"[{i + 1}/{len(new_items)}] ", end="")
 
-        result = crawl_answer_combined(page, item)
+        aid = item['answer_id']
+        # 短时缓存检查
+        cached = load_answer_cache(output_dir, aid)
+        if cached:
+            result = cached
+            print(f"📦 缓存命中: {item.get('title', '')[:30]}...")
+        else:
+            result = crawl_answer_combined(page, item, user_profile=user_profile)
+            if result and result['md_text']:
+                save_answer_cache(output_dir, aid, result)
         if result and result['md_text']:
             fpath = save_answer(
                 output_dir,
@@ -670,7 +784,8 @@ def crawl_user_answers(page: Page, user_id: str,
         _, full_file_map = load_progress_with_files(output_dir)
         stats = {'total': len(completed_set), 'success': success,
                  'failed': failed, 'skipped': skipped}
-        save_evidence_report(output_dir, user_id, all_meta, full_file_map, stats)
+        save_evidence_report(output_dir, user_id, all_meta, full_file_map,
+                           stats, user_profile)
         print(f"🔒 证据采集报告已生成: EVIDENCE_REPORT.md")
 
     print(f"\n{'='*60}")
@@ -687,3 +802,141 @@ def crawl_user_answers(page: Page, user_id: str,
         'skipped': skipped,
         'total': len(completed_set),
     }
+
+
+def scrape_user_profile(page: Page, user_id: str) -> dict:
+    """
+    抓取用户基本影响力数据（法务证据用）
+
+    返回 dict:
+        nickname, followers, following, upvotes_received,
+        likes_received, collections, answers_count, articles_count,
+        profile_url, bio
+    """
+    profile_url = f"https://www.zhihu.com/people/{user_id}"
+    result = {
+        'nickname': user_id,
+        'followers': 0,
+        'following': 0,
+        'upvotes_received': 0,
+        'likes_received': 0,
+        'collections': 0,
+        'answers_count': 0,
+        'articles_count': 0,
+        'profile_url': profile_url,
+        'bio': '',
+    }
+
+    try:
+        print(f"\n👤 正在采集用户影响力数据: {profile_url}")
+        page.goto(profile_url, wait_until="domcontentloaded", timeout=30000)
+        time.sleep(3)
+
+        # 策略1: NumberBoard-item 数字板（新版知乎）
+        boards = page.query_selector_all('[class*="NumberBoard-item"],'
+                                         ' [class*="NumberBoard"] [class*="item"]')
+        for board in boards:
+            try:
+                text = board.inner_text().strip()
+                # 格式: "1,234\n关注者" 或 "567\n赞同"
+                m = re.search(r'([\d,.万]+)\s*\n?\s*(关注者|关注了|赞同|喜欢|收藏)', text)
+                if m:
+                    v = _parse_zhihu_number(m.group(1))
+                    label = m.group(2)
+                    if label == '关注者':
+                        result['followers'] = v
+                    elif label == '关注了':
+                        result['following'] = v
+                    elif label == '赞同':
+                        result['upvotes_received'] = v
+                    elif label == '喜欢':
+                        result['likes_received'] = v
+                    elif label == '收藏':
+                        result['collections'] = v
+            except Exception:
+                pass
+
+        # 策略2: ProfileHeader 数字统计（旧版知乎）
+        if result['followers'] == 0:
+            try:
+                items = page.query_selector_all('[class*="ProfileHeader"] [class*="NumberBoard-value"],'
+                                                 ' [class*="Profile"] [class*="followers"] [class*="count"],'
+                                                 ' [class*="Profile-lightList"] strong')
+                labels = page.query_selector_all('[class*="ProfileHeader"] [class*="NumberBoard-name"],'
+                                                   ' [class*="Profile"] [class*="label"]')
+                for i, item in enumerate(items):
+                    try:
+                        v = _parse_zhihu_number(item.inner_text().strip())
+                        label = labels[i].inner_text().strip() if i < len(labels) else ''
+                        if '关注者' in label:
+                            result['followers'] = v
+                        elif '关注' in label:
+                            result['following'] = v
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        # 策略3: 从页面meta/结构化数据提取
+        try:
+            html = page.content()
+            soup = BeautifulSoup(html, 'html.parser')
+
+            # 关注者
+            follower_el = soup.select_one('[class*="Followship"],'
+                                          ' strong[class*="NumberBoard-value"],'
+                                          ' [class*="followers-count"]')
+            if follower_el and result['followers'] == 0:
+                result['followers'] = _parse_zhihu_number(follower_el.get_text(strip=True))
+
+            # 昵称
+            name_el = soup.select_one('[class*="ProfileHeader-name"],'
+                                       ' .ProfileHeader-title,'
+                                       ' [class*="UserLink-link"]')
+            if name_el:
+                result['nickname'] = name_el.get_text(strip=True)
+
+            # 简介
+            bio_el = soup.select_one('[class*="ProfileHeader-headline"],'
+                                      ' [class*="bio"]')
+            if bio_el:
+                result['bio'] = bio_el.get_text(strip=True)
+
+            # 回答数、文章数
+            stat_items = soup.select('[class*="Profile-lightList"] [class*="item"],'
+                                      ' [class*="Tabs-item"]')
+            for item in stat_items:
+                try:
+                    text = item.get_text(strip=True)
+                    m = re.search(r'回答\s*([\d,.万]+)', text)
+                    if m:
+                        result['answers_count'] = _parse_zhihu_number(m.group(1))
+                    m = re.search(r'文章\s*([\d,.万]+)', text)
+                    if m:
+                        result['articles_count'] = _parse_zhihu_number(m.group(1))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # 汇总日志
+        print(f"  👍 赞同: {result['upvotes_received']} | 👥 关注者: {result['followers']}"
+              f" | 📝 回答: {result['answers_count']}")
+
+    except Exception as e:
+        print(f"  ⚠ 用户影响力采集失败: {e}")
+
+    return result
+
+
+def _parse_zhihu_number(s: str) -> int:
+    """解析知乎风格数字: '1.2 万' → 12000, '3,456' → 3456"""
+    s = s.replace(',', '').replace(' ', '').strip()
+    if '万' in s:
+        return int(float(s.replace('万', '')) * 10000)
+    if '亿' in s:
+        return int(float(s.replace('亿', '')) * 100000000)
+    try:
+        return int(float(s))
+    except ValueError:
+        return 0
