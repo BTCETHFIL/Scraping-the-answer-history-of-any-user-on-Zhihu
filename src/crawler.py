@@ -711,9 +711,16 @@ def crawl_user_answers(page: Page, user_id: str,
 
     # 测试模式：强制限制为 3 条
     max_answers = config.max_answers
+    test_keyword_mode = False  # 测试模式+关键词：需要多收集再过滤到3条
     if config.test_mode:
-        max_answers = 3
-        log_print("🧪 测试模式：只爬取前 3 条回答")
+        if keyword:
+            # 测试模式+关键词：收集足够多链接，过滤后取前3条
+            test_keyword_mode = True
+            max_answers = 0  # 不设上限，由关键词过滤后截取
+            log_print("🧪 测试模式（含关键词过滤）：收集链接 → 关键词筛选 → 至多3条")
+        else:
+            max_answers = 3
+            log_print("🧪 测试模式：只爬取前 3 条回答")
         log_print()
 
     log_print("🎯 混合模式：截图(保留原文排版) + 文字(可搜索/复制) + base64图片嵌入")
@@ -753,6 +760,14 @@ def crawl_user_answers(page: Page, user_id: str,
             log_print(f"   标题匹配: {len(title_match)} 条（直接抓取）")
             log_print(f"   待查内容: {len(title_no_match)} 条（爬取后检查回答内容）")
             log_print(f"   合计 {len(items)}/{before} 条进入爬取队列")
+
+    # 测试模式+关键词：只保留前 3 条进入爬取
+    if test_keyword_mode and len(items) > 3:
+        items = items[:3]
+        # 同步更新 check_content_ids（只保留前3条中标题不匹配的）
+        top3_ids = {it['answer_id'] for it in items}
+        check_content_ids = check_content_ids & top3_ids
+        log_print(f"🧪 测试模式：取前 {len(items)} 条匹配项进入爬取")
 
     # 过滤已完成的（force_recrawl_ids 已从 completed_set 中移除）
     new_items = [it for it in items if it['answer_id'] not in completed_set]

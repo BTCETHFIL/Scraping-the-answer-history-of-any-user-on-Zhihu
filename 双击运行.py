@@ -1058,11 +1058,17 @@ class ZhihuCrawlerGUI:
                 else:
                     self._log(f"⏭ {uid}: 跳过 {len(status['missing_ids'])} 条缺失文件", 'info')
 
+        # 读取关键词（提前，测试模式需要判断）
+        keyword = self._keyword_entry.get().strip()
+
         # ── 启动爬取 ──
         self._log(f"\n{'='*55}", 'dim')
         self._log(f"🎯 目标用户: {', '.join(user_ids)}", 'info')
         if self._cfg.test_mode:
-            self._log(f"🧪 测试模式: 开启（只爬3条）", 'info')
+            if keyword:
+                self._log(f"🧪 测试模式: 开启（收集链接→关键词筛选→至多爬3条匹配项）", 'info')
+            else:
+                self._log(f"🧪 测试模式: 开启（只爬3条）", 'info')
         else:
             self._log(f"📊 最多爬取: {'全部' if self._cfg.max_answers == 0 else self._cfg.max_answers} 条/人", 'info')
         self._log(f"🎯 输出模式: 混合模式（截图 + 文字 + base64图片嵌入）", 'info')
@@ -1072,8 +1078,6 @@ class ZhihuCrawlerGUI:
             self._log(f"🔄 强制忽略缓存: 开启（跳过所有缓存+进度）", 'info')
         self._log(f"{'='*55}\n", 'dim')
 
-        # 读取关键词
-        keyword = self._keyword_entry.get().strip()
         if keyword:
             self._log(f"🔍 关键词过滤: 「{keyword}」", 'info')
 
