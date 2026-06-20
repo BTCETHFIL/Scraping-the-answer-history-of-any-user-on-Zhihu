@@ -1089,7 +1089,7 @@ def crawl_single_url(page: Page, url: str, output_dir: str = None,
     if output_dir:
         base_dir = Path(output_dir)
     else:
-        base_dir = Path(config.output_dir) / "manual"
+        base_dir = Path(config.output_dir)
 
     try:
         # ── 导航 & 等待渲染 ──
