@@ -892,6 +892,8 @@ class ZhihuCrawlerGUI:
         self._manual_btn.config(state=tk.NORMAL)
         self._import_btn.config(state=tk.NORMAL)
         self._progress_label.config(text="就绪")
+        # 自动刷新已抓取用户列表
+        self._refresh_crawled_users_report(silent=True)
 
     def _split_large_md_file(self):
         """选择目录，扫描并分割 >10MB 的 .md 文件"""
