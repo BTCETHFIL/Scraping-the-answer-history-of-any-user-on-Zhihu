@@ -223,6 +223,12 @@ class ZhihuCrawlerGUI:
         self._max_entry.insert(0, "0")
         self._max_entry.pack(side=tk.LEFT)
         ttk.Label(row1, text="（0=全部）", foreground="gray").pack(side=tk.LEFT, padx=4)
+        # 关键词搜索
+        ttk.Label(row1, text="🔍 关键词:", foreground="#4ec9b0").pack(side=tk.LEFT, padx=(16, 0))
+        self._keyword_entry = ttk.Entry(row1, width=20)
+        self._keyword_entry.pack(side=tk.LEFT, padx=2)
+        ttk.Label(row1, text="（仅抓取标题含此关键词的回答）", foreground="gray",
+                  font=("", 8)).pack(side=tk.LEFT)
 
         row2 = ttk.Frame(crawl_frame)
         row2.pack(fill=tk.X, pady=2)
@@ -485,13 +491,16 @@ class ZhihuCrawlerGUI:
         self._manual_btn.config(state=tk.DISABLED)
         self._progress_label.config(text=f"正在批量保存 ({len(urls)}条)...")
 
+        # 读取关键词
+        keyword = self._keyword_entry.get().strip()
+
         threading.Thread(
             target=self._manual_urls_thread,
-            args=(urls,),
+            args=(urls, keyword),
             daemon=True
         ).start()
 
-    def _manual_urls_thread(self, urls: list):
+    def _manual_urls_thread(self, urls: list, keyword: str = ""):
         """后台线程：批量保存多条链接为 MD"""
         import time as _time
         from playwright.sync_api import sync_playwright
@@ -503,10 +512,13 @@ class ZhihuCrawlerGUI:
 
         success_count = 0
         fail_count = 0
+        skip_count = 0
 
         try:
             total = len(urls)
             self._log(f"\n🔗 批量保存 {total} 条链接", 'info')
+            if keyword:
+                self._log(f"🔍 关键词过滤: 「{keyword}」", 'info')
 
             with sync_playwright() as p:
                 launch_kwargs = {
@@ -554,10 +566,14 @@ class ZhihuCrawlerGUI:
 
                 for i, url in enumerate(urls, 1):
                     self._log(f"  [{i}/{total}] {url[:80]}...", 'info')
-                    result = crawl_single_url(page, url, output_dir=self._cfg.output_dir)
+                    result = crawl_single_url(page, url, output_dir=self._cfg.output_dir,
+                                              keyword=keyword)
                     if result['success']:
                         self._log(f"    ✅ {result['md_path']}", 'success')
                         success_count += 1
+                    elif '不含关键词' in result.get('error', ''):
+                        self._log(f"    ⊘ 跳过（不含关键词）", 'dim')
+                        skip_count += 1
                     else:
                         self._log(f"    ❌ {result['error']}", 'error')
                         fail_count += 1
@@ -572,6 +588,8 @@ class ZhihuCrawlerGUI:
             sys.stdout = original_stdout
             self._running = False
             summary = f"✅ {success_count} 成功"
+            if skip_count:
+                summary += f" / ⊘ {skip_count} 跳过（不含关键词）"
             if fail_count:
                 summary += f" / ❌ {fail_count} 失败"
             self._log(f"\n📊 批量保存完成: {summary}", 'info')
@@ -930,6 +948,11 @@ class ZhihuCrawlerGUI:
             self._log(f"🔄 强制忽略缓存: 开启（跳过所有缓存+进度）", 'info')
         self._log(f"{'='*55}\n", 'dim')
 
+        # 读取关键词
+        keyword = self._keyword_entry.get().strip()
+        if keyword:
+            self._log(f"🔍 关键词过滤: 「{keyword}」", 'info')
+
         # 检查 Chrome
         if self._cfg.chrome_exe and not Path(self._cfg.chrome_exe).exists():
             self._log(f"⚠ Chrome 路径不存在: {self._cfg.chrome_exe}", 'warn')
@@ -946,7 +969,7 @@ class ZhihuCrawlerGUI:
         # 后台线程
         self._crawler_thread = threading.Thread(
             target=self._crawl_thread,
-            args=(user_ids, force_recrawl_map),
+            args=(user_ids, force_recrawl_map, keyword),
             daemon=True
         )
         self._crawler_thread.start()
@@ -959,7 +982,8 @@ class ZhihuCrawlerGUI:
         self._log("\n⚠ 正在停止...（请等待当前页面处理完成）", 'warn')
         self._stop_btn.config(state=tk.DISABLED)
 
-    def _crawl_thread(self, user_ids: list, force_recrawl_map: dict = None):
+    def _crawl_thread(self, user_ids: list, force_recrawl_map: dict = None,
+                      keyword: str = ""):
         """后台爬取线程"""
         import time as _time
         from playwright.sync_api import sync_playwright
@@ -1033,7 +1057,8 @@ class ZhihuCrawlerGUI:
                     try:
                         force_ids = force_recrawl_map.get(uid, set())
                         r = crawl_user_answers(page, uid, force_recrawl_ids=force_ids,
-                                               stop_event=self._stop_event)
+                                              stop_event=self._stop_event,
+                                              keyword=keyword)
                         results.append(r)
                         # 记录爬取历史
                         from id_manager import get_id_manager

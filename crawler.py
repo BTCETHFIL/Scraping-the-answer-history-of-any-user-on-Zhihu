@@ -839,7 +839,8 @@ def get_crawl_status(user_id: str) -> dict:
 
 def crawl_user_answers(page: Page, user_id: str,
                        force_recrawl_ids: set = None,
-                       stop_event=None) -> dict:
+                       stop_event=None,
+                       keyword: str = "") -> dict:
     """
     爬取指定用户的所有回答
 
@@ -847,8 +848,9 @@ def crawl_user_answers(page: Page, user_id: str,
         page: Playwright Page 对象
         user_id: 用户 ID（纯字符串）
         force_recrawl_ids: 强制重新爬取的回答 ID 集合
-                           （这些 ID 即使有进度记录也会重新爬取）
+                          （这些 ID 即使有进度记录也会重新爬取）
         stop_event: threading.Event，用于支持 GUI 中途停止
+        keyword: 关键词过滤（仅抓取标题含此关键词的回答）
 
     返回统计信息
     """
@@ -900,6 +902,17 @@ def crawl_user_answers(page: Page, user_id: str,
     except StopCrawlException:
         print("\n  ⚠ 用户手动停止（收集链接阶段）")
         items = []
+
+    # 关键词过滤（按标题）
+    if keyword:
+        kw = keyword.strip()
+        if kw:
+            before = len(items)
+            items = [it for it in items if kw.lower() in it.get('title', '').lower()]
+            filtered_out = before - len(items)
+            print(f"🔍 关键词过滤「{kw}」: {len(items)}/{before} 条匹配")
+            if filtered_out > 0:
+                print(f"   已排除 {filtered_out} 条不匹配的回答")
 
     # 过滤已完成的（force_recrawl_ids 已从 completed_set 中移除）
     new_items = [it for it in items if it['answer_id'] not in completed_set]
@@ -1016,7 +1029,8 @@ def crawl_user_answers(page: Page, user_id: str,
     }
 
 
-def crawl_single_url(page: Page, url: str, output_dir: str = None) -> dict:
+def crawl_single_url(page: Page, url: str, output_dir: str = None,
+                     keyword: str = "") -> dict:
     """
     手动给定链接 → 保存为 MD
 
@@ -1101,6 +1115,18 @@ def crawl_single_url(page: Page, url: str, output_dir: str = None) -> dict:
                 title = re.sub(r'<[^>]+>', '', m.group(1)).strip()
         if not title:
             title = "手动保存回答"
+
+        # 关键词过滤（按标题）
+        if keyword:
+            kw = keyword.strip()
+            if kw and kw.lower() not in title.lower():
+                print(f"  ⊘ 跳过（标题不含关键词「{kw}」）")
+                return {
+                    'success': False,
+                    'md_path': '',
+                    'meta': {'title': title},
+                    'error': f'标题不含关键词「{kw}」',
+                }
 
         # 提取作者 & 作者 ID（用于按用户分类目录）
         author = ""
@@ -1197,13 +1223,15 @@ def crawl_single_url(page: Page, url: str, output_dir: str = None) -> dict:
 
         md_text = '\n'.join(lines)
 
-        # ── 按作者分类目录 ──
+        # ── 按作者分类目录（昵称 + author_id，与自动抓取一致）──
         if author_id:
-            user_dir = base_dir / author_id
+            safe_author = sanitize_filename(author, 30) if author and author != author_id else ""
+            dirname = f"{safe_author}_{author_id}" if safe_author else author_id
         elif author:
-            user_dir = base_dir / sanitize_filename(author, 40)
+            dirname = sanitize_filename(author, 40)
         else:
-            user_dir = base_dir / "unknown"
+            dirname = "unknown"
+        user_dir = base_dir / dirname
         user_dir.mkdir(parents=True, exist_ok=True)
 
         # ── 保存 MD ──
