@@ -60,23 +60,34 @@ def _any_keyword_matches(text: str, keywords: list) -> bool:
 
 
 def collect_answer_links(page: Page, user_id: str, max_answers: int = 0,
-                         stop_event=None) -> list:
+                         stop_event=None, keyword: str = "",
+                         keyword_min_match: int = 0) -> list:
     """
     在用户回答页面滚动加载，收集回答链接
+
+    参数:
+        keyword: 关键词字符串（逗号/分号分隔多个），用于标题匹配提前终止
+        keyword_min_match: 标题匹配至少达到此数量后停止收集（0=不提前终止）
+                          测试模式+关键词时设为 3，避免收集全部链接
+
     返回 [{title, url, answer_id, preview_html, upvotes, date}, ...]
     """
     answers_url = f"https://www.zhihu.com/people/{user_id}/answers"
     log_print(f"\n📋 正在加载回答列表: {answers_url}")
 
+    # 解析关键词列表
+    kws = _split_keywords(keyword) if keyword and keyword_min_match > 0 else []
+
     # 短时缓存检查：先看是否有未过期的链接缓存
+    # 注意：有关键词提前终止时跳过缓存（缓存可能包含全部链接，需要重新收集以分批处理）
     from utils import get_output_path
-    cached = load_links_cache(get_output_path(config.output_dir, user_id), user_id)
-    if cached:
-        # 已缓存：直接返回（如果限定了 max_answers 则截断）
-        if max_answers > 0 and len(cached) > max_answers:
-            cached = cached[:max_answers]
-        log_print(f"✅ 使用缓存链接: {len(cached)} 条")
-        return cached
+    if not kws:
+        cached = load_links_cache(get_output_path(config.output_dir, user_id), user_id)
+        if cached:
+            if max_answers > 0 and len(cached) > max_answers:
+                cached = cached[:max_answers]
+            log_print(f"✅ 使用缓存链接: {len(cached)} 条")
+            return cached
 
     page.goto(answers_url, wait_until="domcontentloaded")
     time.sleep(3)
@@ -209,6 +220,16 @@ def collect_answer_links(page: Page, user_id: str, max_answers: int = 0,
         if max_answers > 0 and len(collected) >= max_answers:
             break
 
+        # 关键词提前终止：检查已收集链接中有多少标题匹配
+        if kws and keyword_min_match > 0:
+            title_match_count = sum(
+                1 for it in collected
+                if _any_keyword_matches(it.get('title', ''), kws)
+            )
+            if title_match_count >= keyword_min_match:
+                log_print(f"  🎯 已找到 {title_match_count} 条标题匹配（≥{keyword_min_match}），停止收集")
+                break
+
         # 无新内容计数
         if new_found == 0:
             no_new_count += 1
@@ -249,9 +270,10 @@ def collect_answer_links(page: Page, user_id: str, max_answers: int = 0,
         scroll_attempts += 1
 
     log_print(f"✅ 共收集 {len(collected)} 条回答链接")
-    # 缓存链接列表
-    from utils import get_output_path as _gop
-    save_links_cache(_gop(config.output_dir, user_id), user_id, collected)
+    # 缓存链接列表（关键词提前终止时不缓存——只收集了部分链接）
+    if not kws:
+        from utils import get_output_path as _gop
+        save_links_cache(_gop(config.output_dir, user_id), user_id, collected)
     return collected
 
 
@@ -711,13 +733,10 @@ def crawl_user_answers(page: Page, user_id: str,
 
     # 测试模式：强制限制为 3 条
     max_answers = config.max_answers
-    test_keyword_mode = False  # 测试模式+关键词：需要多收集再过滤到3条
     if config.test_mode:
         if keyword:
-            # 测试模式+关键词：收集足够多链接，过滤后取前3条
-            test_keyword_mode = True
-            max_answers = 0  # 不设上限，由关键词过滤后截取
-            log_print("🧪 测试模式（含关键词过滤）：收集链接 → 关键词筛选 → 至多3条")
+            # 测试模式+关键词：5个5个收集，找到3条标题匹配即停止
+            log_print("🧪 测试模式（含关键词过滤）：边收集边筛选 → 标题匹配≥3条即停 → 至多爬3条")
         else:
             max_answers = 3
             log_print("🧪 测试模式：只爬取前 3 条回答")
@@ -732,7 +751,11 @@ def crawl_user_answers(page: Page, user_id: str,
 
     # 收集回答链接
     try:
-        items = collect_answer_links(page, user_id, max_answers, stop_event=stop_event)
+        items = collect_answer_links(
+            page, user_id, max_answers, stop_event=stop_event,
+            keyword=keyword if config.test_mode else "",
+            keyword_min_match=3 if config.test_mode else 0,
+        )
     except StopCrawlException:
         log_print("\n  ⚠ 用户手动停止（收集链接阶段）")
         items = []
@@ -761,12 +784,10 @@ def crawl_user_answers(page: Page, user_id: str,
             log_print(f"   待查内容: {len(title_no_match)} 条（爬取后检查回答内容）")
             log_print(f"   合计 {len(items)}/{before} 条进入爬取队列")
 
-    # 测试模式+关键词：只保留前 3 条进入爬取
-    if test_keyword_mode and len(items) > 3:
+    # 测试模式+关键词：只保留前 3 条进入爬取（collect_answer_links 已提前停止收集，此处兜底）
+    if config.test_mode and keyword and len(items) > 3:
         items = items[:3]
-        # 同步更新 check_content_ids（只保留前3条中标题不匹配的）
-        top3_ids = {it['answer_id'] for it in items}
-        check_content_ids = check_content_ids & top3_ids
+        check_content_ids = {it['answer_id'] for it in items if it['answer_id'] in check_content_ids}
         log_print(f"🧪 测试模式：取前 {len(items)} 条匹配项进入爬取")
 
     # 过滤已完成的（force_recrawl_ids 已从 completed_set 中移除）

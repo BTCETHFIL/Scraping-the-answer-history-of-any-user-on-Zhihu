@@ -1066,7 +1066,7 @@ class ZhihuCrawlerGUI:
         self._log(f"🎯 目标用户: {', '.join(user_ids)}", 'info')
         if self._cfg.test_mode:
             if keyword:
-                self._log(f"🧪 测试模式: 开启（收集链接→关键词筛选→至多爬3条匹配项）", 'info')
+                self._log(f"🧪 测试模式: 开启（5条/批筛选→标题匹配≥3条即停→至多爬3条）", 'info')
             else:
                 self._log(f"🧪 测试模式: 开启（只爬3条）", 'info')
         else:
