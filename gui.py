@@ -306,25 +306,6 @@ class ZhihuCrawlerGUI:
         ttk.Checkbutton(row_d4, text="🔄 强制忽略缓存（测试用：跳过所有缓存+进度，从头重爬）",
                         variable=self._force_no_cache_var).pack(side=tk.LEFT)
 
-        # ── 手动链接保存 ──
-        manual_frame = ttk.LabelFrame(left_frame, text="🔗 手动链接保存为 MD（无需预配置用户ID · 每行一条 · 上限20条）", padding=6)
-        manual_frame.pack(fill=tk.X, pady=(6, 6))
-
-        self._manual_text = tk.Text(manual_frame, height=4, font=("Consolas", 9),
-                                     wrap=tk.WORD, fg="gray")
-        self._manual_text.insert("1.0", "粘贴知乎回答链接（支持App复制格式：文字+链接）...")
-        self._manual_text.bind('<FocusIn>', self._on_manual_focus_in)
-        self._manual_text.bind('<FocusOut>', self._on_manual_focus_out)
-        self._manual_text.pack(fill=tk.X)
-
-        manual_btn_row = ttk.Frame(manual_frame)
-        manual_btn_row.pack(fill=tk.X, pady=(4, 0))
-        self._manual_btn = ttk.Button(manual_btn_row, text="📝 批量保存为 MD",
-                                      command=self._save_manual_urls, width=16)
-        self._manual_btn.pack(side=tk.LEFT)
-        ttk.Label(manual_btn_row, text="支持: https://www.zhihu.com/question/xxx/answer/xxx",
-                  foreground="gray", font=("", 8)).pack(side=tk.LEFT, padx=8)
-
         # ── 操作控制 ──
         action_frame = ttk.LabelFrame(left_frame, text="操作", padding=6)
         action_frame.pack(fill=tk.X, pady=(8, 0))
@@ -342,6 +323,29 @@ class ZhihuCrawlerGUI:
         self._start_btn = ttk.Button(ctrl_row, text="▶ 开始爬取",
                                       command=self._start_crawl, width=14)
         self._start_btn.pack(side=tk.RIGHT)
+
+        # ── 手动链接保存（独立功能区）──
+        ttk.Separator(left_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(12, 2))
+        ttk.Label(left_frame, text="📋 独立功能：手动粘贴链接保存",
+                  font=("", 9, "bold"), foreground="#888").pack(anchor=tk.W, pady=(0, 2))
+
+        manual_frame = ttk.LabelFrame(left_frame, text="🔗 手动链接保存为 MD（无需预配置用户ID · 每行一条 · 上限20条）", padding=6)
+        manual_frame.pack(fill=tk.X, pady=(0, 6))
+
+        self._manual_text = tk.Text(manual_frame, height=4, font=("Consolas", 9),
+                                     wrap=tk.WORD, fg="gray")
+        self._manual_text.insert("1.0", "粘贴知乎回答链接（支持App复制格式：文字+链接）...")
+        self._manual_text.bind('<FocusIn>', self._on_manual_focus_in)
+        self._manual_text.bind('<FocusOut>', self._on_manual_focus_out)
+        self._manual_text.pack(fill=tk.X)
+
+        manual_btn_row = ttk.Frame(manual_frame)
+        manual_btn_row.pack(fill=tk.X, pady=(4, 0))
+        self._manual_btn = ttk.Button(manual_btn_row, text="📝 批量保存为 MD",
+                                      command=self._save_manual_urls, width=16)
+        self._manual_btn.pack(side=tk.LEFT)
+        ttk.Label(manual_btn_row, text="支持: https://www.zhihu.com/question/xxx/answer/xxx",
+                  foreground="gray", font=("", 8)).pack(side=tk.LEFT, padx=8)
 
         # 右侧面板: 日志
         right_frame = ttk.Frame(main_frame, width=420)
