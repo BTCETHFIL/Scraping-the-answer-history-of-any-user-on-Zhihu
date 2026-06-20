@@ -143,6 +143,143 @@ class IDManager:
         h = self.get_crawl_history(user_id)
         return h[-1] if h else None
 
+    # ── 已抓取用户列表报告 ────────────────────────────
+
+    def build_crawled_users_report(self, output_root: str = "output") -> str:
+        """
+        生成「已抓取用户列表.md」的 Markdown 内容。
+        扫描 id_list.json + 输出目录，汇总每个用户的基本信息和抓取统计。
+        """
+        import os as _os
+        from pathlib import Path as _Path
+        output_dir = _Path(output_root)
+
+        lines = []
+        lines.append("# 📋 已抓取用户列表")
+        lines.append("")
+        lines.append(f"> 自动生成于 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+        # 按最后爬取时间排序：有历史的在前，按最近爬取降序
+        def _sort_key(u: UserEntry):
+            last = self.get_last_crawl(u.user_id)
+            if last:
+                return (0, last.get('date', ''), u.user_id)
+            return (1, '', u.user_id)
+
+        sorted_users = sorted(self.users, key=_sort_key)
+
+        # 统计
+        total_users = len(self.users)
+        crawled_users = sum(1 for u in self.users if self.get_crawl_history(u.user_id))
+        total_answers = sum(
+            sum(r.get('answers_scraped', 0) for r in self.get_crawl_history(u.user_id))
+            for u in self.users
+        )
+        total_md_files = 0
+        for u in self.users:
+            # 扫描输出目录中的 MD 文件
+            for hist in self.get_crawl_history(u.user_id):
+                od = _Path(hist.get('output_dir', ''))
+                if not od.is_absolute():
+                    od = output_dir / od.name if od.parts else output_dir / od
+                if od.exists():
+                    total_md_files += len(list(od.glob("*.md")))
+
+        lines.append(f"**总用户数**: {total_users} | **已抓取**: {crawled_users} | "
+                     f"**累计抓取回答**: {total_answers} 条 | **现存 MD 文件**: {total_md_files} 个")
+        lines.append("")
+
+        # ── 已抓取用户 ──
+        crawled_list = [u for u in sorted_users if self.get_crawl_history(u.user_id)]
+        if crawled_list:
+            lines.append("## ✅ 已抓取用户")
+            lines.append("")
+            lines.append("| 序号 | 昵称 | 用户ID | 首次抓取 | 最近抓取 | 抓取次数 | 累计回答 | 现存MD |")
+            lines.append("|------|------|--------|----------|----------|----------|----------|--------|")
+
+            for i, u in enumerate(crawled_list, 1):
+                hist = self.get_crawl_history(u.user_id)
+                first_date = hist[0].get('date', '')[:10] if hist else '-'
+                last_date = hist[-1].get('date', '')[:16] if hist else '-'
+                crawl_count = len(hist)
+                total_ans = sum(r.get('answers_scraped', 0) for r in hist)
+
+                # 扫描现存 MD 数
+                md_count = 0
+                for h in hist:
+                    od = _Path(h.get('output_dir', ''))
+                    if not od.is_absolute():
+                        od = output_dir / od.name if od.parts else output_dir / od
+                    if od.exists():
+                        md_count += len(list(od.glob("*.md")))
+
+                nickname = u.nickname if u.nickname != u.user_id else '-'
+                lines.append(
+                    f"| {i} | {nickname} | `{u.user_id}` | {first_date} | {last_date} | "
+                    f"{crawl_count} | {total_ans} | {md_count} |"
+                )
+
+            lines.append("")
+
+        # ── 未抓取用户 ──
+        uncrawled = [u for u in sorted_users if not self.get_crawl_history(u.user_id)]
+        if uncrawled:
+            lines.append("## ⏳ 待抓取用户")
+            lines.append("")
+            lines.append("| 序号 | 昵称 | 用户ID | 主页 |")
+            lines.append("|------|------|--------|------|")
+
+            for i, u in enumerate(uncrawled, 1):
+                nickname = u.nickname if u.nickname != u.user_id else '-'
+                url_short = u.url.replace('https://www.zhihu.com/people/', '…/')
+                lines.append(f"| {i} | {nickname} | `{u.user_id}` | [{url_short}]({u.url}) |")
+
+            lines.append("")
+
+        # ── 详情 ──
+        if crawled_list:
+            lines.append("---")
+            lines.append("")
+            lines.append("## 📊 抓取详情")
+            lines.append("")
+
+            for u in crawled_list:
+                hist = self.get_crawl_history(u.user_id)
+                nickname = u.nickname if u.nickname != u.user_id else u.user_id
+                total_ans = sum(r.get('answers_scraped', 0) for r in hist)
+                lines.append(f"### {nickname} (`{u.user_id}`)")
+                lines.append("")
+                lines.append(f"- **主页**: [{u.url}]({u.url})")
+                lines.append(f"- **首次抓取**: {hist[0].get('date', '-')}")
+                lines.append(f"- **最近抓取**: {hist[-1].get('date', '-')}")
+                lines.append(f"- **总抓取次数**: {len(hist)} 次")
+                lines.append(f"- **累计抓取回答**: {total_ans} 条")
+                lines.append("")
+
+                # 列出各次抓取
+                lines.append("| 时间 | 抓取条数 | 输出目录 |")
+                lines.append("|------|----------|----------|")
+                for r in hist:
+                    date = r.get('date', '')[:16]
+                    count = r.get('answers_scraped', 0)
+                    od = r.get('output_dir', '').replace('\\', '/')
+                    lines.append(f"| {date} | {count} | `{od}/` |")
+                lines.append("")
+
+        return "\n".join(lines)
+
+    def save_crawled_users_report(self, output_root: str = "output",
+                                  report_path: str = None) -> Path:
+        """生成并保存「已抓取用户列表.md」"""
+        report_path = Path(report_path or
+                          (Path(__file__).parent.parent / "已抓取用户列表.md"))
+        content = self.build_crawled_users_report(output_root)
+        report_path.write_text(content, encoding='utf-8')
+        return report_path
+
 
 # 全局单例（惰性加载）
 _id_manager: IDManager | None = None

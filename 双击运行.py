@@ -357,6 +357,13 @@ class ZhihuCrawlerGUI:
                                       command=self._start_crawl, width=14)
         self._start_btn.pack(side=tk.RIGHT)
 
+        # 已抓取用户列表按钮
+        ctrl_row2 = ttk.Frame(action_frame)
+        ctrl_row2.pack(fill=tk.X, pady=(4, 0))
+        self._report_btn = ttk.Button(ctrl_row2, text="📋 刷新已抓取用户列表",
+                                      command=self._refresh_crawled_users_report, width=22)
+        self._report_btn.pack(side=tk.LEFT)
+
         # ── 手动链接保存（独立功能区）──
         ttk.Separator(left_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(12, 2))
         ttk.Label(left_frame, text="📋 独立功能：手动粘贴链接保存",
@@ -1447,6 +1454,22 @@ class ZhihuCrawlerGUI:
         self._progress['value'] = 100
         self._progress_label.config(text="完成")
         self._running = False
+        # 自动刷新已抓取用户列表
+        self._refresh_crawled_users_report(silent=True)
+
+    def _refresh_crawled_users_report(self, silent=False):
+        """刷新「已抓取用户列表.md」"""
+        try:
+            from id_manager import get_id_manager
+            mgr = get_id_manager()
+            mgr.load()  # 重新加载，确保读到最新爬取历史
+            path = mgr.save_crawled_users_report(
+                output_root=self._cfg.output_dir
+            )
+            if not silent:
+                self._log(f"📋 已刷新用户列表: {path.name}", 'info')
+        except Exception as e:
+            self._log(f"⚠ 刷新用户列表失败: {e}", 'warn')
 
     def _on_close(self):
         if self._running:
