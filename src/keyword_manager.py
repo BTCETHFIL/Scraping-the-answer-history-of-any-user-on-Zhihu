@@ -154,25 +154,23 @@ class KeywordManager:
     def import_from_file(filepath: str) -> list:
         """
         从文本文件导入关键词。
-        支持格式：一行一个，或逗号/分号分隔。
+        支持格式：一行一个，或任意常见分隔符（逗号/顿号/分号/空格/Tab等）。
+        #开头行为注释，空行跳过。
         返回关键词列表（去重去空白）。
         """
+        import re
         text = Path(filepath).read_text(encoding="utf-8")
         keywords = []
         for line in text.splitlines():
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-            # 尝试逗号/分号分隔
-            if any(sep in line for sep in (",", "，", ";")):
-                parts = line.replace("，", ",").replace(";", ",").split(",")
-                for p in parts:
-                    k = p.strip()
-                    if k and k not in keywords:
-                        keywords.append(k)
-            else:
-                if line not in keywords:
-                    keywords.append(line)
+            # 用统一正则拆分：逗号（中英文）、顿号、分号（中英文）、空白字符（空格/Tab等）
+            parts = re.split(r'[,，、;；\s]+', line)
+            for p in parts:
+                k = p.strip()
+                if k and k not in keywords:
+                    keywords.append(k)
         return keywords
 
 

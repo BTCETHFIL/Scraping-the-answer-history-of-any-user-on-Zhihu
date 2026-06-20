@@ -1146,9 +1146,8 @@ class ZhihuCrawlerGUI:
                 messagebox.showwarning("提示", "请先选择一个分组", parent=dialog)
                 return
             g = keyword_mgr.groups[sel[0]]
-            new_kws = [k.strip() for k in kw_text.get("1.0", tk.END)
-                       .replace("，", ",").replace(";", ",").replace("\n", ",")
-                       .split(",") if k.strip()]
+            from crawler import _split_keywords
+            new_kws = _split_keywords(kw_text.get("1.0", tk.END))
             keyword_mgr.update_group_keywords(g.name, new_kws)
             self._refresh_keyword_ui()
             self._log(f"✏ 已更新分组「{g.name}」({len(new_kws)}个关键词)", "info")
