@@ -57,7 +57,7 @@ def print_help():
     print("配置文件说明:")
     print("  config.json 中的 targets 字段填写要爬取的用户列表")
     print("  max_answers: 0 表示爬取全部，设为数字则限制条数")
-    print("  headless: true 可后台运行（首次登录需设为 false）\n")
+
 
 
 def main():
@@ -95,7 +95,6 @@ def main():
         print(f"🔗 手动链接模式: {url}")
         with sync_playwright() as p:
             launch_kwargs = {
-                'headless': config.headless,
                 'args': [
                     '--disable-blink-features=AutomationControlled',
                     '--no-sandbox',
@@ -183,7 +182,6 @@ def main():
     with sync_playwright() as p:
         # 优先使用用户指定的 Chrome，否则用 Playwright 内置 Chromium
         launch_kwargs = {
-            'headless': config.headless,
             'args': [
                 '--disable-blink-features=AutomationControlled',
                 '--no-sandbox',

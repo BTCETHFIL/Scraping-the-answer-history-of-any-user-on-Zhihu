@@ -26,7 +26,6 @@ class Config:
     page_delay_max: float = 8.0    # 打开回答页最大间隔
 
     # ── 浏览器 ──
-    headless: bool = False         # 无头模式（首次登录建议 False）
     browser_data_dir: str = "browser_data"  # 浏览器持久化目录（保持登录态）
     chrome_exe: str = ""           # Chrome 路径，留空则用 Playwright 内置 Chromium
 

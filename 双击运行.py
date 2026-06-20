@@ -387,10 +387,6 @@ class ZhihuCrawlerGUI:
 
         row4 = ttk.Frame(crawl_frame)
         row4.pack(fill=tk.X, pady=2)
-        self._headless_var = tk.BooleanVar(value=False)
-        cb = ttk.Checkbutton(row4, text="无头模式（后台运行）", variable=self._headless_var)
-        cb.pack(side=tk.LEFT)
-        ToolTip(cb, "不显示浏览器窗口，静默后台爬取\n节省资源但无法观察爬取过程\n首次使用建议关闭以确认登录正常")
         self._test_var = tk.BooleanVar(value=False)
         cb = ttk.Checkbutton(row4, text="🧪 测试模式（只爬3条）", variable=self._test_var,
                         command=self._on_test_toggle)
@@ -837,7 +833,6 @@ class ZhihuCrawlerGUI:
 
             with sync_playwright() as p:
                 launch_kwargs = {
-                    'headless': self._cfg.headless,
                     'args': [
                         '--disable-blink-features=AutomationControlled',
                         '--no-sandbox',
@@ -1181,7 +1176,6 @@ class ZhihuCrawlerGUI:
         self._output_entry.insert(0, self._cfg.output_dir)
         self._chrome_entry.delete(0, tk.END)
         self._chrome_entry.insert(0, self._cfg.chrome_exe)
-        self._headless_var.set(self._cfg.headless)
         self._test_var.set(self._cfg.test_mode)
         self._forensic_var.set(self._cfg.forensic_mode)
         self._scroll_min.delete(0, tk.END)
@@ -1220,7 +1214,6 @@ class ZhihuCrawlerGUI:
 
         self._cfg.output_dir = self._output_entry.get().strip() or "output"
         self._cfg.chrome_exe = self._chrome_entry.get().strip()
-        self._cfg.headless = self._headless_var.get()
         # 固定为混合模式：截图 + 文字 + base64图片嵌入
         self._cfg.download_images = True
         self._cfg.embed_images = True
@@ -1768,7 +1761,6 @@ class ZhihuCrawlerGUI:
             self._log(f"🧪 测试模式: 开启（只滚3条）", 'info')
         else:
             self._log(f"📊 滚屏上限: {'全部' if self._cfg.max_answers == 0 else self._cfg.max_answers} 条/人", 'info')
-        self._log(f"👁 无头模式: {'是' if self._cfg.headless else '否'}", 'info')
         self._log(f"{'='*55}\n", 'dim')
 
         # 检查 Chrome
@@ -1845,7 +1837,6 @@ class ZhihuCrawlerGUI:
             self._log(f"🔍 关键词过滤: 「{keyword}」", 'info')
         else:
             self._log(f"🔍 无关键词筛选，全量生成", 'info')
-        self._log(f"👁 无头模式: {'是' if self._cfg.headless else '否'}", 'info')
         self._log(f"🔒 法务证据: {'是' if self._cfg.forensic_mode else '否'}", 'info')
         self._log(f"{'='*55}\n", 'dim')
 
@@ -1941,7 +1932,6 @@ class ZhihuCrawlerGUI:
         try:
             with sync_playwright() as p:
                 launch_kwargs = {
-                    'headless': self._cfg.headless,
                     'args': [
                         '--disable-blink-features=AutomationControlled',
                         '--no-sandbox',

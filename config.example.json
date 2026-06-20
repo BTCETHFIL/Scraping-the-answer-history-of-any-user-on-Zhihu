@@ -10,7 +10,6 @@
   "scroll_delay_max": 5.0,
   "page_delay_min": 3.0,
   "page_delay_max": 8.0,
-  "headless": false,
   "browser_data_dir": "browser_data",
   "chrome_exe": "",
   "download_images": true,

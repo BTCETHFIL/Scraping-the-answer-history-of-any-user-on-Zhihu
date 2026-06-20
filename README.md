@@ -117,7 +117,6 @@ output/
 | `keyword` | `""` | 关键词过滤，多关键词用逗号/顿号/空格/分号分隔（如 `AI, 人工智能、NLP`），标题或回答内容匹配任一即保存，不区分大小写 |
 | `test_mode` | `false` | 测试模式：只爬前 3 条 |
 | `output_dir` | `output` | 输出根目录 |
-| `headless` | `false` | 无头模式（后台运行，不显示浏览器窗口） |
 | `chrome_exe` | `""` | 本地 Chrome 路径，留空则使用 Playwright 自带 Chromium |
 | `forensic_mode` | `true` | 法务证据模式：自动保存 HTML + 证据报告 + SHA256 |
 | `cache_ttl_minutes` | `30` | 短时缓存有效期（分钟），0 = 禁用 |
