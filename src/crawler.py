@@ -17,7 +17,7 @@ from config import config
 from converter import html_to_md, extract_answer_meta
 from storage import (
     save_answer, save_progress, load_progress,
-    save_index, download_images, embed_images_base64,
+    save_index, embed_images_base64,
     check_missing_files,
     load_links_cache, save_links_cache,
     load_answer_cache, save_answer_cache,
