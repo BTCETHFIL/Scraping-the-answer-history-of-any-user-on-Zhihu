@@ -1413,16 +1413,16 @@ class ZhihuCrawlerGUI:
         self._recent_combo["values"] = recent if recent else ["（暂无记录）"]
 
     def _on_group_selected(self, event=None):
-        """选中分组时预览关键词（不自动填入）"""
+        """选中分组时自动填入关键词到输入框"""
         name = self._group_var.get()
         if not name or name == "（暂无分组）":
             return
         g = keyword_mgr.get_group(name)
         if g:
-            preview = ", ".join(g.keywords[:5])
-            if len(g.keywords) > 5:
-                preview += f" …(共{len(g.keywords)}个)"
-            self._log(f"📂 分组「{name}」: {preview}", "info")
+            kw_str = ", ".join(g.keywords)
+            self._keyword_entry.delete(0, tk.END)
+            self._keyword_entry.insert(0, kw_str)
+            self._log(f"✅ 已应用分组「{name}」({len(g.keywords)}个关键词)", "info")
 
     def _on_keyword_enter(self, event=None):
         """关键词输入框回车：确认关键词并记录到最近使用"""
@@ -1542,8 +1542,12 @@ class ZhihuCrawlerGUI:
             new_kws = _split_keywords(kw_text.get("1.0", tk.END))
             keyword_mgr.update_group_keywords(g.name, new_kws)
             self._refresh_keyword_ui()
+            # 同步更新主窗口：填入关键词 + 选中分组
+            self._keyword_entry.delete(0, tk.END)
+            self._keyword_entry.insert(0, ", ".join(new_kws))
+            self._group_var.set(g.name)
             self._log(f"✏ 已更新分组「{g.name}」({len(new_kws)}个关键词)", "info")
-            messagebox.showinfo("完成", f"分组「{g.name}」已更新", parent=dialog)
+            messagebox.showinfo("完成", f"分组「{g.name}」已更新（已自动填入关键词输入框）", parent=dialog)
             dialog.destroy()
 
         def do_delete():
