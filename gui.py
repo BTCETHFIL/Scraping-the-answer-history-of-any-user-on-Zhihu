@@ -332,7 +332,7 @@ class ZhihuCrawlerGUI:
         ttk.Label(left_frame, text="📋 独立功能：手动粘贴链接保存",
                   font=("", 9, "bold"), foreground="#888").pack(anchor=tk.W, pady=(0, 2))
 
-        manual_frame = ttk.LabelFrame(left_frame, text="🔗 手动链接保存为 MD（无需预配置用户ID · 每行一条 · 上限20条）", padding=6)
+        manual_frame = ttk.LabelFrame(left_frame, text="🔗 手动链接保存为 MD（无需预配置用户ID · 每行一条 · 上限100条）", padding=6)
         manual_frame.pack(fill=tk.X, pady=(0, 6))
 
         self._manual_text = tk.Text(manual_frame, height=4, font=("Consolas", 9),
@@ -347,6 +347,9 @@ class ZhihuCrawlerGUI:
         self._manual_btn = ttk.Button(manual_btn_row, text="📝 批量保存为 MD",
                                       command=self._save_manual_urls, width=16)
         self._manual_btn.pack(side=tk.LEFT)
+        self._import_btn = ttk.Button(manual_btn_row, text="📂 导入文件",
+                                      command=self._import_link_file, width=12)
+        self._import_btn.pack(side=tk.RIGHT)
         ttk.Label(manual_btn_row, text="支持: https://www.zhihu.com/question/xxx/answer/xxx",
                   foreground="gray", font=("", 8)).pack(side=tk.LEFT, padx=8)
 
@@ -378,11 +381,6 @@ class ZhihuCrawlerGUI:
                         ('info', '#569cd6'), ('warn', '#e5b73c'), ('dim', '#888')]:
             self._log_area.tag_configure(tg, foreground=cl)
 
-        # 日志操作
-        log_btn_row = ttk.Frame(right_frame)
-        log_btn_row.pack(fill=tk.X, pady=(4, 0))
-        ttk.Button(log_btn_row, text="🗑 清空日志区", command=self._clear_log, width=12).pack(side=tk.RIGHT)
-
         # 关闭事件
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -392,11 +390,6 @@ class ZhihuCrawlerGUI:
         self._log_area.configure(state=tk.NORMAL)
         self._log_area.insert(tk.END, msg + '\n', tag)
         self._log_area.see(tk.END)
-        self._log_area.configure(state=tk.DISABLED)
-
-    def _clear_log(self):
-        self._log_area.configure(state=tk.NORMAL)
-        self._log_area.delete(1.0, tk.END)
         self._log_area.configure(state=tk.DISABLED)
 
     # ── ID 列表管理 ─────────────────────────────────────
@@ -473,29 +466,91 @@ class ZhihuCrawlerGUI:
             self._manual_text.insert("1.0", "粘贴知乎回答链接（支持App复制格式：文字+链接）...")
             self._manual_text.config(fg="gray")
 
-    MAX_MANUAL_URLS = 20
+    MAX_MANUAL_URLS = 100
+    BATCH_SIZE = 100
 
-    def _save_manual_urls(self, event=None):
-        """批量手动链接 → 保存为 MD"""
-        raw = self._manual_text.get("1.0", tk.END).strip()
-        if not raw or raw == "粘贴知乎回答链接（支持App复制格式：文字+链接）...":
-            messagebox.showwarning("提示", "请先粘贴知乎回答链接")
+    def _import_link_file(self):
+        """导入链接文件（.txt / .csv），支持超大批次自动分批"""
+        fp = filedialog.askopenfilename(
+            title="选择链接文件",
+            filetypes=[("文本文件", "*.txt"), ("CSV 文件", "*.csv"), ("所有文件", "*.*")]
+        )
+        if not fp:
             return
 
-        # 用正则从全部文本中提取知乎链接（兼容App复制的带文字格式）
-        urls = re.findall(r'https?://[^\s]*zhihu\.com[^\s]*', raw)
-        # 去重保持顺序
+        try:
+            with open(fp, 'r', encoding='utf-8') as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            with open(fp, 'r', encoding='gbk') as f:
+                content = f.read()
+
+        # 用正则提取知乎链接
+        urls = re.findall(r'https?://[^\s]*zhihu\.com[^\s]*', content)
         seen = set()
         urls = [u for u in urls if not (u in seen or seen.add(u))]
 
         if not urls:
-            messagebox.showwarning("提示", "请粘贴知乎回答链接（含 zhihu.com）")
+            messagebox.showwarning("提示", f"文件中未找到知乎链接\n文件: {Path(fp).name}")
             return
 
-        if len(urls) > self.MAX_MANUAL_URLS:
+        # 存储导入的链接（内部全量）
+        self._imported_urls = urls
+
+        batches = (len(urls) + self.BATCH_SIZE - 1) // self.BATCH_SIZE
+        if len(urls) <= self.MAX_MANUAL_URLS:
+            # 少量链接：直接填入文本框
+            self._manual_text.delete("1.0", tk.END)
+            self._manual_text.insert("1.0", "\n".join(urls))
+            self._manual_text.config(fg="black")
+            msg = f"已导入 {len(urls)} 条链接"
+        else:
+            # 大量链接：文本框显示摘要
+            self._manual_text.delete("1.0", tk.END)
+            self._manual_text.insert(
+                "1.0",
+                f"已导入 {len(urls)} 条链接（将自动分 {batches} 批处理，每批 {self.BATCH_SIZE} 条）\n"
+                f"来源: {Path(fp).name}"
+            )
+            self._manual_text.config(fg="black")
+            msg = f"已导入 {len(urls)} 条链接（分 {batches} 批）"
+        self._log(msg, 'info')
+
+    def _save_manual_urls(self, event=None):
+        """批量手动链接 → 保存为 MD（含导入文件分批支持）"""
+        # 优先使用导入的链接列表
+        if getattr(self, '_imported_urls', None):
+            urls = self._imported_urls
+        else:
+            raw = self._manual_text.get("1.0", tk.END).strip()
+            if not raw or raw == "粘贴知乎回答链接（支持App复制格式：文字+链接）..." or raw.startswith("已导入"):
+                messagebox.showwarning("提示", "请先粘贴知乎回答链接或导入链接文件")
+                return
+
+            urls = re.findall(r'https?://[^\s]*zhihu\.com[^\s]*', raw)
+            seen = set()
+            urls = [u for u in urls if not (u in seen or seen.add(u))]
+
+        if not urls:
+            messagebox.showwarning("提示", "请粘贴知乎回答链接（含 zhihu.com）或导入链接文件")
+            return
+
+        # 手动粘贴时限制上限 100
+        if not getattr(self, '_imported_urls', None) and len(urls) > self.MAX_MANUAL_URLS:
             urls = urls[:self.MAX_MANUAL_URLS]
             self._manual_text.delete("1.0", tk.END)
             self._manual_text.insert("1.0", "\n".join(urls))
+
+        # 超大批次确认
+        if len(urls) > self.BATCH_SIZE:
+            batches = (len(urls) + self.BATCH_SIZE - 1) // self.BATCH_SIZE
+            ok = messagebox.askyesno(
+                "分批处理确认",
+                f"共 {len(urls)} 条链接，超过单批上限（{self.BATCH_SIZE}条）。\n\n"
+                f"将自动分 {batches} 批处理，是否继续？"
+            )
+            if not ok:
+                return
 
         if self._running:
             messagebox.showwarning("提示", "已有爬取任务在运行中，请等待完成")
@@ -504,9 +559,9 @@ class ZhihuCrawlerGUI:
         self._running = True
         self._start_btn.config(state=tk.DISABLED)
         self._manual_btn.config(state=tk.DISABLED)
+        self._import_btn.config(state=tk.DISABLED)
         self._progress_label.config(text=f"正在批量保存 ({len(urls)}条)...")
 
-        # 读取关键词
         keyword = self._keyword_entry.get().strip()
 
         threading.Thread(
@@ -516,7 +571,7 @@ class ZhihuCrawlerGUI:
         ).start()
 
     def _manual_urls_thread(self, urls: list, keyword: str = ""):
-        """后台线程：批量保存多条链接为 MD"""
+        """后台线程：批量保存多条链接为 MD（支持分批进度）"""
         import time as _time
         from playwright.sync_api import sync_playwright
         from auth import ensure_login, get_login_state_path
@@ -528,12 +583,16 @@ class ZhihuCrawlerGUI:
         success_count = 0
         fail_count = 0
         skip_count = 0
+        total = len(urls)
 
         try:
-            total = len(urls)
             self._log(f"\n🔗 批量保存 {total} 条链接", 'info')
             if keyword:
                 self._log(f"🔍 关键词过滤: 「{keyword}」", 'info')
+
+            batch_count = (total + self.BATCH_SIZE - 1) // self.BATCH_SIZE
+            if batch_count > 1:
+                self._log(f"📦 自动分批: 共 {batch_count} 批，每批 {self.BATCH_SIZE} 条", 'info')
 
             with sync_playwright() as p:
                 launch_kwargs = {
@@ -579,19 +638,28 @@ class ZhihuCrawlerGUI:
                     browser.close()
                     return
 
-                for i, url in enumerate(urls, 1):
-                    self._log(f"  [{i}/{total}] {url[:80]}...", 'info')
-                    result = crawl_single_url(page, url, output_dir=self._cfg.output_dir,
-                                              keyword=keyword)
-                    if result['success']:
-                        self._log(f"    ✅ {result['md_path']}", 'success')
-                        success_count += 1
-                    elif '不含关键词' in result.get('error', ''):
-                        self._log(f"    ⊘ 跳过（不含关键词）", 'dim')
-                        skip_count += 1
-                    else:
-                        self._log(f"    ❌ {result['error']}", 'error')
-                        fail_count += 1
+                for batch_idx in range(batch_count):
+                    start = batch_idx * self.BATCH_SIZE
+                    end = min(start + self.BATCH_SIZE, total)
+                    batch_urls = urls[start:end]
+
+                    if batch_count > 1:
+                        self._log(f"\n── 📦 批次 {batch_idx + 1}/{batch_count} ({start + 1}-{end}) ──", 'info')
+
+                    for i, url in enumerate(batch_urls):
+                        idx = start + i + 1
+                        self._log(f"  [{idx}/{total}] {url[:80]}...", 'info')
+                        result = crawl_single_url(page, url, output_dir=self._cfg.output_dir,
+                                                  keyword=keyword)
+                        if result['success']:
+                            self._log(f"    ✅ {result['md_path']}", 'success')
+                            success_count += 1
+                        elif '不含关键词' in result.get('error', ''):
+                            self._log(f"    ⊘ 跳过（不含关键词）", 'dim')
+                            skip_count += 1
+                        else:
+                            self._log(f"    ❌ {result['error']}", 'error')
+                            fail_count += 1
 
                 browser.close()
 
@@ -602,6 +670,7 @@ class ZhihuCrawlerGUI:
         finally:
             sys.stdout = original_stdout
             self._running = False
+            self._imported_urls = None  # 清除导入缓存
             summary = f"✅ {success_count} 成功"
             if skip_count:
                 summary += f" / ⊘ {skip_count} 跳过（不含关键词）"
@@ -609,13 +678,14 @@ class ZhihuCrawlerGUI:
                 summary += f" / ❌ {fail_count} 失败"
             self._log(f"\n📊 批量保存完成: {summary}", 'info')
             self.root.after(0, lambda: messagebox.showinfo("批量保存完成",
-                f"批量保存 {len(urls)} 条完成:\n{summary}"))
+                f"批量保存 {total} 条完成:\n{summary}"))
             self.root.after(0, self._on_manual_done)
 
     def _on_manual_done(self):
         """手动保存完成后恢复 UI"""
         self._start_btn.config(state=tk.NORMAL)
         self._manual_btn.config(state=tk.NORMAL)
+        self._import_btn.config(state=tk.NORMAL)
         self._progress_label.config(text="就绪")
 
     def _split_large_md_file(self):
