@@ -1668,6 +1668,26 @@ class ZhihuCrawlerGUI:
             keyword_mgr.add_recent(keyword)
             self._refresh_keyword_ui()
 
+        # ── 确认弹窗 ──
+        from crawler import _split_keywords
+        kws = _split_keywords(keyword)
+        filter_info = f"🔍 关键词筛选：{len(kws)}个 → {', '.join(kws[:8])}"
+        if len(kws) > 8:
+            filter_info += f" …(共{len(kws)}个)"
+        if not keyword:
+            filter_info = "⚠ 未设置关键词，将抓取全部回答（无筛选）"
+        confirm_msg = (
+            f"确认开始爬取？\n\n"
+            f"👤 目标用户: {len(user_ids)}人\n"
+            f"{filter_info}\n"
+            f"📊 最多爬取: {'全部' if self._cfg.max_answers == 0 else self._cfg.max_answers} 条/人"
+        )
+        if self._cfg.test_mode:
+            confirm_msg += "\n🧪 测试模式: 开启"
+        if not messagebox.askyesno("确认爬取", confirm_msg, parent=self.root):
+            self._log("⚠ 用户取消爬取", "warn")
+            return
+
         # ── 启动爬取 ──
         self._log(f"\n{'='*55}", 'dim')
         self._log(f"🎯 目标用户: {', '.join(user_ids)}", 'info')
