@@ -36,6 +36,29 @@ def _is_stopped(stop_event) -> bool:
     return stop_event is not None and stop_event.is_set()
 
 
+def _split_keywords(keyword_str: str) -> list:
+    """按逗号/分号拆分多关键词列表，去空白去重。空输入返回空列表。"""
+    if not keyword_str or not keyword_str.strip():
+        return []
+    parts = re.split(r'[,，;]', keyword_str)
+    seen = set()
+    result = []
+    for p in parts:
+        kw = p.strip()
+        if kw and kw not in seen:
+            seen.add(kw)
+            result.append(kw)
+    return result
+
+
+def _any_keyword_matches(text: str, keywords: list) -> bool:
+    """不区分大小写检查文本是否匹配任一关键词。keywords 为空时返回 True（全部通过）。"""
+    if not keywords:
+        return True
+    text_lower = text.lower()
+    return any(kw.lower() in text_lower for kw in keywords)
+
+
 def collect_answer_links(page: Page, user_id: str, max_answers: int = 0,
                          stop_event=None) -> list:
     """
@@ -707,24 +730,26 @@ def crawl_user_answers(page: Page, user_id: str,
         log_print("\n  ⚠ 用户手动停止（收集链接阶段）")
         items = []
 
-    # 关键词过滤（标题 OR 内容，去重）
+    # 关键词过滤（标题 OR 内容，多关键词 OR 关系，去重）
     check_content_ids = set()  # 需爬取后检查内容的 answer_id 集合
     if keyword:
-        kw = keyword.strip()
-        if kw:
+        keywords = _split_keywords(keyword)
+        if keywords:
             before = len(items)
             title_match = []
             title_no_match = []
             for it in items:
-                if kw.lower() in it.get('title', '').lower():
+                if _any_keyword_matches(it.get('title', ''), keywords):
                     title_match.append(it)
                 else:
                     title_no_match.append(it)
-            # 去重：每个回答只在一个列表中
+            # 去重：每个回答只在一个列表中（answer_id 已在 collect_answer_links 中去重）
             for it in title_no_match:
                 check_content_ids.add(it['answer_id'])
             items = title_match + title_no_match
-            log_print(f"🔍 关键词过滤「{kw}」（标题 OR 内容）:")
+            kw_display = ' / '.join(keywords)
+            log_print(f"🔍 关键词过滤（{len(keywords)}个 / 标题OR内容 / 任一命中即抓取）:")
+            log_print(f"   「{kw_display}」")
             log_print(f"   标题匹配: {len(title_match)} 条（直接抓取）")
             log_print(f"   待查内容: {len(title_no_match)} 条（爬取后检查回答内容）")
             log_print(f"   合计 {len(items)}/{before} 条进入爬取队列")
@@ -786,13 +811,14 @@ def crawl_user_answers(page: Page, user_id: str,
                         ).decode('ascii')
                     save_answer_cache(output_dir, aid, cache_result)
             if result and result['md_text']:
-                # 内容关键词检查（仅对标题不匹配的项）
+                # 内容关键词检查（仅对标题不匹配的项，多关键词 OR 关系）
                 if keyword and item['answer_id'] in check_content_ids:
-                    kw = keyword.strip()
-                    html_lower = result.get('html_text', '').lower()
-                    md_lower = result['md_text'].lower()
-                    if kw.lower() not in html_lower and kw.lower() not in md_lower:
-                        log_print(f"    ⊘ 跳过（内容不含关键词「{kw}」）")
+                    keywords = _split_keywords(keyword)
+                    if keywords and not (
+                        _any_keyword_matches(result.get('html_text', ''), keywords) or
+                        _any_keyword_matches(result['md_text'], keywords)
+                    ):
+                        log_print(f"    ⊘ 跳过（内容不含任一关键词）")
                         content_skip += 1
                         continue
 
@@ -948,9 +974,10 @@ def crawl_single_url(page: Page, url: str, output_dir: str = None,
             title = "手动保存回答"
 
         # 关键词预判断（标题匹配 → 直接抓取；标题不匹配 → 爬取后检查内容）
-        kw = keyword.strip() if keyword else ""
-        title_matches_keyword = kw and kw.lower() in title.lower()
-        need_content_check = kw and not title_matches_keyword
+        kw = keyword.strip()
+        keywords = _split_keywords(kw)
+        title_matches_keyword = keywords and _any_keyword_matches(title, keywords)
+        need_content_check = keywords and not title_matches_keyword
 
         # 提取作者 & 作者 ID（用于按用户分类目录）
         author = ""
@@ -1072,14 +1099,15 @@ def crawl_single_url(page: Page, url: str, output_dir: str = None,
         md_text = '\n'.join(lines)
 
         # 内容关键词检查（仅对标题不匹配的项，OR 关系的第二部分）
-        if need_content_check and kw:
-            if kw.lower() not in html.lower() and kw.lower() not in md_text.lower():
-                log_print(f"  ⊘ 跳过（标题和内容均不含关键词「{kw}」）")
+        if need_content_check and keywords:
+            if not (_any_keyword_matches(html, keywords) or _any_keyword_matches(md_text, keywords)):
+                kw_display = ' / '.join(keywords)
+                log_print(f"  ⊘ 跳过（标题和内容均不含任一关键词「{kw_display}」）")
                 return {
                     'success': False,
                     'md_path': '',
                     'meta': meta,
-                    'error': f'标题和内容均不含关键词「{kw}」',
+                    'error': f'标题和内容均不含任一关键词',
                 }
 
         # ── 按作者分类目录（复用 get_output_path，与自动抓取命名一致）──

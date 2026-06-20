@@ -240,7 +240,7 @@ class ZhihuCrawlerGUI:
         ttk.Label(row1, text="🔍 关键词:", foreground="#4ec9b0").pack(side=tk.LEFT, padx=(16, 0))
         self._keyword_entry = ttk.Entry(row1, width=20)
         self._keyword_entry.pack(side=tk.LEFT, padx=2)
-        ttk.Label(row1, text="（标题或回答内容含关键词即抓取，自动去重）", foreground="gray",
+        ttk.Label(row1, text="（多关键词用逗号分隔，标题/内容含任一即抓取，answer_id 自动去重）", foreground="gray",
                   font=("", 8)).pack(side=tk.LEFT)
 
         row2 = ttk.Frame(crawl_frame)
