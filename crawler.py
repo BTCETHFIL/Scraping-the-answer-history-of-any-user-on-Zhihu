@@ -28,6 +28,7 @@ from utils import (
     get_output_path, extract_date_from_html,
     StopCrawlException,
 )
+from log_setup import log_print
 
 
 def _is_stopped(stop_event) -> bool:
@@ -42,7 +43,7 @@ def collect_answer_links(page: Page, user_id: str, max_answers: int = 0,
     返回 [{title, url, answer_id, preview_html, upvotes, date}, ...]
     """
     answers_url = f"https://www.zhihu.com/people/{user_id}/answers"
-    print(f"\n📋 正在加载回答列表: {answers_url}")
+    log_print(f"\n📋 正在加载回答列表: {answers_url}")
 
     # 短时缓存检查：先看是否有未过期的链接缓存
     from utils import get_output_path
@@ -51,7 +52,7 @@ def collect_answer_links(page: Page, user_id: str, max_answers: int = 0,
         # 已缓存：直接返回（如果限定了 max_answers 则截断）
         if max_answers > 0 and len(cached) > max_answers:
             cached = cached[:max_answers]
-        print(f"✅ 使用缓存链接: {len(cached)} 条")
+        log_print(f"✅ 使用缓存链接: {len(cached)} 条")
         return cached
 
     page.goto(answers_url, wait_until="domcontentloaded")
@@ -66,7 +67,7 @@ def collect_answer_links(page: Page, user_id: str, max_answers: int = 0,
     while scroll_attempts < max_scroll_attempts:
         # 检查停止信号
         if _is_stopped(stop_event):
-            print("\n  ⚠ 用户手动停止（收集链接阶段）")
+            log_print("\n  ⚠ 用户手动停止（收集链接阶段）")
             break
         # 提取当前页面上的所有回答卡片
         cards = page.query_selector_all('[itemprop="zhihu:answer"], '
@@ -180,7 +181,7 @@ def collect_answer_links(page: Page, user_id: str, max_answers: int = 0,
             except Exception:
                 continue
 
-        print(f"  📜 已收集 {len(collected)} 条回答" + (f" (本轮 +{new_found})" if new_found else ""))
+        log_print(f"  📜 已收集 {len(collected)} 条回答" + (f" (本轮 +{new_found})" if new_found else ""))
 
         if max_answers > 0 and len(collected) >= max_answers:
             break
@@ -189,14 +190,14 @@ def collect_answer_links(page: Page, user_id: str, max_answers: int = 0,
         if new_found == 0:
             no_new_count += 1
             if no_new_count >= 3:
-                print("  ℹ 连续 3 次未发现新内容，已到达列表末尾")
+                log_print("  ℹ 连续 3 次未发现新内容，已到达列表末尾")
                 break
         else:
             no_new_count = 0
 
         # 滚动加载更多
         if _is_stopped(stop_event):
-            print("\n  ⚠ 用户手动停止（收集链接阶段）")
+            log_print("\n  ⚠ 用户手动停止（收集链接阶段）")
             break
         random_delay(
             config.scroll_delay_min,
@@ -224,7 +225,7 @@ def collect_answer_links(page: Page, user_id: str, max_answers: int = 0,
 
         scroll_attempts += 1
 
-    print(f"✅ 共收集 {len(collected)} 条回答链接")
+    log_print(f"✅ 共收集 {len(collected)} 条回答链接")
     # 缓存链接列表
     from utils import get_output_path as _gop
     save_links_cache(_gop(config.output_dir, user_id), user_id, collected)
@@ -240,7 +241,7 @@ def crawl_answer(page: Page, item: dict) -> dict:
     url = item['url']
     title = item.get('title', '')
 
-    print(f"  📖 正在获取: {title[:50]}...")
+    log_print(f"  📖 正在获取: {title[:50]}...")
 
     try:
         page.goto(url, wait_until="domcontentloaded", timeout=30000)
@@ -293,7 +294,7 @@ def crawl_answer(page: Page, item: dict) -> dict:
         return {'meta': meta, 'md_text': md_text, 'html_text': html_text}
 
     except Exception as e:
-        print(f"  ✗ 获取失败: {e}")
+        log_print(f"  ✗ 获取失败: {e}")
         # 返回部分数据
         meta = {
             'title': title,
@@ -317,7 +318,7 @@ def crawl_answer_screenshot(page: Page, item: dict) -> dict:
     url = item['url']
     title = item.get('title', '')
 
-    print(f"  📸 正在截图: {title[:50]}...")
+    log_print(f"  📸 正在截图: {title[:50]}...")
 
     try:
         page.goto(url, wait_until="domcontentloaded", timeout=30000)
@@ -410,7 +411,7 @@ def crawl_answer_screenshot(page: Page, item: dict) -> dict:
         }
 
     except Exception as e:
-        print(f"  ✗ 截图失败: {e}")
+        log_print(f"  ✗ 截图失败: {e}")
         meta = {
             'title': title,
             'answer_id': answer_id,
@@ -639,7 +640,7 @@ def crawl_answer_combined(page: Page, item: dict,
     url = item['url']
     title = item.get('title', '')
 
-    print(f"  🎯 混合模式: {title[:50]}...")
+    log_print(f"  🎯 混合模式: {title[:50]}...")
 
     try:
         # ── 1. 导航 & 等待渲染 ──
@@ -798,7 +799,7 @@ def crawl_answer_combined(page: Page, item: dict,
         }
 
     except Exception as e:
-        print(f"  ✗ 混合模式失败: {e}")
+        log_print(f"  ✗ 混合模式失败: {e}")
         meta = {
             'title': title,
             'answer_id': answer_id,
@@ -866,7 +867,7 @@ def crawl_user_answers(page: Page, user_id: str,
     # 强制忽略缓存：清空进度，从头重爬
     if config.force_no_cache:
         if completed_set:
-            print(f"🔄 强制忽略缓存：已清除 {len(completed_set)} 条进度记录，将全部重新爬取")
+            log_print(f"🔄 强制忽略缓存：已清除 {len(completed_set)} 条进度记录，将全部重新爬取")
             completed_set = set()
             # 同时清空 force_recrawl_ids，避免双重提示
             force_recrawl_ids = None
@@ -876,31 +877,31 @@ def crawl_user_answers(page: Page, user_id: str,
         removed = completed_set & force_recrawl_ids
         completed_set -= force_recrawl_ids
         if removed:
-            print(f"🔄 强制重新爬取 {len(removed)} 条（本地文件缺失）")
+            log_print(f"🔄 强制重新爬取 {len(removed)} 条（本地文件缺失）")
 
-    print(f"\n{'='*60}")
-    print(f"🐾 开始爬取用户: {nickname or user_id} ({user_id})")
-    print(f"{'='*60}")
+    log_print(f"\n{'='*60}")
+    log_print(f"🐾 开始爬取用户: {nickname or user_id} ({user_id})")
+    log_print(f"{'='*60}")
 
     # 测试模式：强制限制为 3 条
     max_answers = config.max_answers
     if config.test_mode:
         max_answers = 3
-        print("🧪 测试模式：只爬取前 3 条回答")
-        print()
+        log_print("🧪 测试模式：只爬取前 3 条回答")
+        log_print()
 
-    print("🎯 混合模式：截图(保留原文排版) + 文字(可搜索/复制) + base64图片嵌入")
-    print()
+    log_print("🎯 混合模式：截图(保留原文排版) + 文字(可搜索/复制) + base64图片嵌入")
+    log_print()
 
-    print(f"📁 输出目录: {output_dir}")
-    print(f"📋 已完成: {len(completed_set)} 条"
+    log_print(f"📁 输出目录: {output_dir}")
+    log_print(f"📋 已完成: {len(completed_set)} 条"
           + (f" (其中 {len(missing)} 条本地文件缺失)" if missing else ""))
 
     # 收集回答链接
     try:
         items = collect_answer_links(page, user_id, max_answers, stop_event=stop_event)
     except StopCrawlException:
-        print("\n  ⚠ 用户手动停止（收集链接阶段）")
+        log_print("\n  ⚠ 用户手动停止（收集链接阶段）")
         items = []
 
     # 关键词过滤（标题 OR 内容，去重）
@@ -920,10 +921,10 @@ def crawl_user_answers(page: Page, user_id: str,
             for it in title_no_match:
                 check_content_ids.add(it['answer_id'])
             items = title_match + title_no_match
-            print(f"🔍 关键词过滤「{kw}」（标题 OR 内容）:")
-            print(f"   标题匹配: {len(title_match)} 条（直接抓取）")
-            print(f"   待查内容: {len(title_no_match)} 条（爬取后检查回答内容）")
-            print(f"   合计 {len(items)}/{before} 条进入爬取队列")
+            log_print(f"🔍 关键词过滤「{kw}」（标题 OR 内容）:")
+            log_print(f"   标题匹配: {len(title_match)} 条（直接抓取）")
+            log_print(f"   待查内容: {len(title_no_match)} 条（爬取后检查回答内容）")
+            log_print(f"   合计 {len(items)}/{before} 条进入爬取队列")
 
     # 过滤已完成的（force_recrawl_ids 已从 completed_set 中移除）
     new_items = [it for it in items if it['answer_id'] not in completed_set]
@@ -931,7 +932,7 @@ def crawl_user_answers(page: Page, user_id: str,
 
     if _is_stopped(stop_event) and len(items) == 0:
         # 在收集链接阶段被停止且未收集到任何内容，直接保存进度返回
-        print("⚠ 收集链接阶段被停止，未获取到回答列表")
+        log_print("⚠ 收集链接阶段被停止，未获取到回答列表")
         save_progress(output_dir, completed_set, file_map={})
         return {
             'user_id': user_id,
@@ -943,8 +944,8 @@ def crawl_user_answers(page: Page, user_id: str,
         }
 
     if skipped > 0:
-        print(f"⏭ 跳过 {skipped} 条已完成")
-    print(f"📝 待爬取: {len(new_items)} 条\n")
+        log_print(f"⏭ 跳过 {skipped} 条已完成")
+    log_print(f"📝 待爬取: {len(new_items)} 条\n")
 
     # 逐条爬取（统一使用混合模式：截图 + 文字 + base64图片嵌入）
     all_meta = []
@@ -956,11 +957,11 @@ def crawl_user_answers(page: Page, user_id: str,
     for i, item in enumerate(new_items):
         # 检查停止信号
         if _is_stopped(stop_event):
-            print("\n  ⚠ 用户手动停止（爬取阶段）")
+            log_print("\n  ⚠ 用户手动停止（爬取阶段）")
             break
 
         try:
-            print(f"[{i + 1}/{len(new_items)}] ", end="")
+            log_print(f"[{i + 1}/{len(new_items)}] ", end="")
 
             aid = item['answer_id']
             # 短时缓存检查
@@ -970,7 +971,7 @@ def crawl_user_answers(page: Page, user_id: str,
                 # 缓存中 screenshot_bytes 以 base64 存储，需还原
                 if 'screenshot_bytes' in result and isinstance(result['screenshot_bytes'], str):
                     result['screenshot_bytes'] = base64.b64decode(result['screenshot_bytes'])
-                print(f"📦 缓存命中: {item.get('title', '')[:30]}...")
+                log_print(f"📦 缓存命中: {item.get('title', '')[:30]}...")
             else:
                 result = crawl_answer_combined(page, item, user_profile=user_profile)
                 if result and result['md_text']:
@@ -988,7 +989,7 @@ def crawl_user_answers(page: Page, user_id: str,
                     html_lower = result.get('html_text', '').lower()
                     md_lower = result['md_text'].lower()
                     if kw.lower() not in html_lower and kw.lower() not in md_lower:
-                        print(f"    ⊘ 跳过（内容不含关键词「{kw}」）")
+                        log_print(f"    ⊘ 跳过（内容不含关键词「{kw}」）")
                         content_skip += 1
                         continue
 
@@ -1003,7 +1004,7 @@ def crawl_user_answers(page: Page, user_id: str,
                 completed_set.add(item['answer_id'])
                 file_map[item['answer_id']] = fpath.name
                 success += 1
-                print(f"    ✓ 已保存(混合): {fpath.name}")
+                log_print(f"    ✓ 已保存(混合): {fpath.name}")
 
                 # 每 10 条保存一次进度
                 if success % 10 == 0:
@@ -1011,12 +1012,12 @@ def crawl_user_answers(page: Page, user_id: str,
                     file_map.clear()
             else:
                 failed += 1
-                print(f"    ✗ 混合模式失败")
+                log_print(f"    ✗ 混合模式失败")
 
             # 延迟
             if i < len(new_items) - 1:
                 if _is_stopped(stop_event):
-                    print("\n  ⚠ 用户手动停止（爬取阶段）")
+                    log_print("\n  ⚠ 用户手动停止（爬取阶段）")
                     break
                 random_delay(
                     config.page_delay_min,
@@ -1025,7 +1026,7 @@ def crawl_user_answers(page: Page, user_id: str,
                     stop_check=lambda: _is_stopped(stop_event) if stop_event else False
                 )
         except StopCrawlException:
-            print("\n  ⚠ 用户手动停止（延迟中）")
+            log_print("\n  ⚠ 用户手动停止（延迟中）")
             break
 
     # 最终保存（file_map 合并写入 progress.json，历史记录不会丢失）
@@ -1034,16 +1035,16 @@ def crawl_user_answers(page: Page, user_id: str,
 
     # EVIDENCE_REPORT.md 暂不生成，需要时单独提出
 
-    print(f"\n{'='*60}")
-    print(f"✅ {user_id} 爬取完成")
+    log_print(f"\n{'='*60}")
+    log_print(f"✅ {user_id} 爬取完成")
     parts = [f"新增: {success} 条"]
     if content_skip:
         parts.append(f"内容不含关键词跳过: {content_skip} 条")
     parts.append(f"失败: {failed} 条 | 跳过(已完成): {skipped} 条")
-    print(f"   {' | '.join(parts)}")
-    print(f"   总计: {len(completed_set)} 条回答")
-    print(f"   输出: {output_dir.resolve()}")
-    print(f"{'='*60}\n")
+    log_print(f"   {' | '.join(parts)}")
+    log_print(f"   总计: {len(completed_set)} 条回答")
+    log_print(f"   输出: {output_dir.resolve()}")
+    log_print(f"{'='*60}\n")
 
     return {
         'user_id': user_id,
@@ -1081,8 +1082,8 @@ def crawl_single_url(page: Page, url: str, output_dir: str = None,
         else:
             return {'success': False, 'md_path': '', 'meta': {}, 'error': f'无法从链接中提取回答ID: {url}'}
 
-    print(f"\n🔗 手动保存单条回答: {url}")
-    print(f"   answer_id: {answer_id}")
+    log_print(f"\n🔗 手动保存单条回答: {url}")
+    log_print(f"   answer_id: {answer_id}")
 
     # 基础输出目录（稍后追加作者子目录）
     if output_dir:
@@ -1246,7 +1247,7 @@ def crawl_single_url(page: Page, url: str, output_dir: str = None,
         # 内容关键词检查（仅对标题不匹配的项，OR 关系的第二部分）
         if need_content_check and kw:
             if kw.lower() not in html.lower() and kw.lower() not in md_text.lower():
-                print(f"  ⊘ 跳过（标题和内容均不含关键词「{kw}」）")
+                log_print(f"  ⊘ 跳过（标题和内容均不含关键词「{kw}」）")
                 return {
                     'success': False,
                     'md_path': '',
@@ -1272,7 +1273,7 @@ def crawl_single_url(page: Page, url: str, output_dir: str = None,
         md_path = user_dir / md_filename
         md_path.write_text(md_text, encoding='utf-8')
 
-        print(f"  ✓ 已保存: {md_path}")
+        log_print(f"  ✓ 已保存: {md_path}")
         return {
             'success': True,
             'md_path': str(md_path),
@@ -1316,7 +1317,7 @@ def scrape_user_profile(page: Page, user_id: str) -> dict:
     }
 
     try:
-        print(f"\n👤 正在采集用户影响力数据: {profile_url}")
+        log_print(f"\n👤 正在采集用户影响力数据: {profile_url}")
         page.goto(profile_url, wait_until="domcontentloaded", timeout=30000)
         time.sleep(3)
 
@@ -1545,12 +1546,12 @@ def scrape_user_profile(page: Page, user_id: str) -> dict:
             pass
 
         # 汇总日志
-        print(f"  👍 赞同: {result['upvotes_received']} | ❤️ 喜欢: {result['likes_received']}"
+        log_print(f"  👍 赞同: {result['upvotes_received']} | ❤️ 喜欢: {result['likes_received']}"
               f" | ⭐ 收藏: {result['collections']} | ✏️ 公共编辑: {result['public_edits']}"
               f" | 👥 关注者: {result['followers']} | 📝 回答: {result['answers_count']}")
 
     except Exception as e:
-        print(f"  ⚠ 用户影响力采集失败: {e}")
+        log_print(f"  ⚠ 用户影响力采集失败: {e}")
 
     return result
 

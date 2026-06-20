@@ -6,9 +6,12 @@ import json
 import re
 import random
 import time
+import logging
 from pathlib import Path
 
 from bs4 import BeautifulSoup, element
+
+logger = logging.getLogger("zhihu.utils")
 
 
 def random_delay(min_s: float, max_s: float, reason: str = "",
@@ -18,10 +21,9 @@ def random_delay(min_s: float, max_s: float, reason: str = "",
     检测到停止信号时抛出 StopCrawlException 让调用方中断。
     """
     delay = random.uniform(min_s, max_s)
-    if reason:
-        print(f"  ⏳ {reason}，等待 {delay:.1f}s...")
-    else:
-        print(f"  ⏳ 等待 {delay:.1f}s...")
+    msg = f"  ⏳ {reason}，等待 {delay:.1f}s..." if reason else f"  ⏳ 等待 {delay:.1f}s..."
+    print(msg)
+    logger.info(msg)
 
     # 如果有停止检查，分片 sleep（每 0.5s 检查一次）
     if stop_check is not None:
@@ -31,7 +33,9 @@ def random_delay(min_s: float, max_s: float, reason: str = "",
             time.sleep(chunk)
             remaining -= chunk
             if stop_check():
-                print("  ⚠ 用户手动停止（延迟中）")
+                msg2 = "  ⚠ 用户手动停止（延迟中）"
+                print(msg2)
+                logger.warning(msg2)
                 raise StopCrawlException("stop")
     else:
         time.sleep(delay)
@@ -232,7 +236,9 @@ def _migrate_dir(src: Path, dst: Path):
             except Exception:
                 pass
     if moved > 0:
-        print(f"📦 已将旧目录内容迁移: {src.name} → {dst.name}")
+        msg = f"📦 已将旧目录内容迁移: {src.name} → {dst.name}"
+        print(msg)
+        logger.info(msg)
     # 源目录为空则删除
     try:
         remaining = list(src.iterdir())

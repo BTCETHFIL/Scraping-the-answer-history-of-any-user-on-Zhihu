@@ -20,6 +20,10 @@ if sys.platform == 'win32':
 # 确保工作目录在项目根目录
 os.chdir(Path(__file__).parent)
 
+# 初始化日志（文件滚动覆盖，2MB×3）
+from log_setup import init_logging
+init_logging()
+
 # 惰性导入：非爬取模式的命令（--config / --help）无需加载爬虫模块
 from config import config
 from utils import extract_user_id

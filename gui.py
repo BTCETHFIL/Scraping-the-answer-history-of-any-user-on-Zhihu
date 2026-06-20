@@ -15,6 +15,10 @@ from pathlib import Path
 # 工作目录切到项目根
 os.chdir(Path(__file__).parent)
 
+# 初始化日志（文件滚动覆盖，2MB×3）
+from log_setup import init_logging
+init_logging()
+
 # 延迟导入爬虫模块
 from config import config, Config
 from utils import extract_user_id
