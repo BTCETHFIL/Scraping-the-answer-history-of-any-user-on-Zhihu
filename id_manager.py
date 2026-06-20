@@ -115,9 +115,9 @@ class IDManager:
         """获取所有用户 ID 列表"""
         return [u.user_id for u in self.users]
 
-    def get_display_list(self) -> list[tuple[str, str]]:
-        """返回用于列表显示的 [(nickname, user_id), ...]"""
-        return [(u.nickname, u.user_id) for u in self.users]
+    def get_display_list(self) -> list[tuple[str, str, str]]:
+        """返回用于列表显示的 [(nickname, user_id, url), ...]"""
+        return [(u.nickname, u.user_id, u.url) for u in self.users]
 
     # ── 爬取历史 ─────────────────────────────────────
 

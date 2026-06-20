@@ -25,11 +25,18 @@ from storage import (
 from utils import (
     random_delay, extract_user_id,
     sanitize_filename, format_datetime,
-    get_output_path, extract_date_from_html
+    get_output_path, extract_date_from_html,
+    StopCrawlException,
 )
 
 
-def collect_answer_links(page: Page, user_id: str, max_answers: int = 0) -> list:
+def _is_stopped(stop_event) -> bool:
+    """检查停止信号（兼容 None）"""
+    return stop_event is not None and stop_event.is_set()
+
+
+def collect_answer_links(page: Page, user_id: str, max_answers: int = 0,
+                         stop_event=None) -> list:
     """
     在用户回答页面滚动加载，收集回答链接
     返回 [{title, url, answer_id, preview_html, upvotes, date}, ...]
@@ -57,6 +64,10 @@ def collect_answer_links(page: Page, user_id: str, max_answers: int = 0) -> list
     no_new_count = 0            # 连续无新内容的滚动次数
 
     while scroll_attempts < max_scroll_attempts:
+        # 检查停止信号
+        if _is_stopped(stop_event):
+            print("\n  ⚠ 用户手动停止（收集链接阶段）")
+            break
         # 提取当前页面上的所有回答卡片
         cards = page.query_selector_all('[itemprop="zhihu:answer"], '
                                          '.List-item, '
@@ -184,10 +195,14 @@ def collect_answer_links(page: Page, user_id: str, max_answers: int = 0) -> list
             no_new_count = 0
 
         # 滚动加载更多
+        if _is_stopped(stop_event):
+            print("\n  ⚠ 用户手动停止（收集链接阶段）")
+            break
         random_delay(
             config.scroll_delay_min,
             config.scroll_delay_max,
-            f"滚动加载 (第{scroll_attempts + 1}次)"
+            f"滚动加载 (第{scroll_attempts + 1}次)",
+            stop_check=lambda: _is_stopped(stop_event) if stop_event else False
         )
 
         # 滚动到底部
@@ -295,8 +310,8 @@ def crawl_answer(page: Page, item: dict) -> dict:
 
 def crawl_answer_screenshot(page: Page, item: dict) -> dict:
     """
-    截图模式：对回答页进行整页截图，嵌入 Markdown
-    返回 {meta, md_text, screenshot_base64}
+    截图模式：对回答页进行整页截图，保存为独立 PNG 文件
+    返回 {meta, md_text, screenshot_bytes}
     """
     answer_id = item['answer_id']
     url = item['url']
@@ -338,7 +353,7 @@ def crawl_answer_screenshot(page: Page, item: dict) -> dict:
             pass
         time.sleep(1)
 
-        # 全页截图
+        # 全页截图 — base64 嵌入 MD，保证移动 MD 后图片仍可显示
         screenshot_bytes = page.screenshot(full_page=True, type='png')
         screenshot_b64 = base64.b64encode(screenshot_bytes).decode('ascii')
 
@@ -391,7 +406,7 @@ def crawl_answer_screenshot(page: Page, item: dict) -> dict:
         return {
             'meta': meta,
             'md_text': md_text,
-            'screenshot_base64': screenshot_b64,
+            'screenshot_bytes': screenshot_bytes,
         }
 
     except Exception as e:
@@ -409,16 +424,16 @@ def crawl_answer_screenshot(page: Page, item: dict) -> dict:
         return {
             'meta': meta,
             'md_text': f"# {title}\n\n> 🕒 证据采集时间: {meta['crawl_time']}\n\n> 截图失败: {e}",
-            'screenshot_base64': '',
+            'screenshot_bytes': b'',
         }
 
 
 def _capture_answer_area(page: Page) -> bytes:
     """
-    截取知乎回答页的内容区：问题标题 + 回答正文（排除右侧栏和无关元素）
-    策略：先尝试定位内容容器，失败则用 clip 拼接，最终回退整页截图
+    截取知乎回答页的内容区：问题标题 + 目标回答正文（排除右侧栏和其他用户回答）
+    策略：主列容器 → 单条回答卡片 clip → 识别"下一个回答"分界线裁剪 → 全页回退
     """
-    # 策略1：查找主内容列容器
+    # 策略1：查找主内容列容器（验证是否只含一个回答）
     content_selectors = [
         '.Question-mainColumn',
         '.Question-main',
@@ -429,34 +444,187 @@ def _capture_answer_area(page: Page) -> bytes:
         try:
             el = page.query_selector(sel)
             if el and el.is_visible():
-                return el.screenshot(type='png')
+                # 检查容器内有多少个回答条目
+                answer_cards = el.query_selector_all(
+                    '.AnswerItem, .AnswerCard, [class*="AnswerItem"], '
+                    '[class*="answer-item"]'
+                )
+                if len(answer_cards) <= 1:
+                    # 只有一个回答，直接截图容器
+                    return el.screenshot(type='png')
+                else:
+                    # 多个回答：只截第一条回答卡片
+                    first_answer = answer_cards[0]
+                    if first_answer.is_visible():
+                        return first_answer.screenshot(type='png')
         except Exception:
             pass
 
-    # 策略2：拼接"问题标题 + 回答卡片"的 bounding box 做 clip
+    # 策略2：定位问题标题 + 第一条回答卡片的 bounding box 做 clip
     try:
         q_header = page.query_selector(
             '.QuestionHeader, .QuestionHeader-main, '
             '[class*="QuestionHeader"], [class*="question-header"]'
         )
-        a_card = page.query_selector(
+        # 使用 locator().first 精确拿第一条回答（而非 query_selector 返回的可能包裹多个的容器）
+        first_answer = page.locator(
             '.AnswerItem, .AnswerCard, [class*="AnswerItem"], '
             '[class*="answer-item"]'
-        )
-        if q_header and a_card:
-            qb = q_header.bounding_box()
-            ab = a_card.bounding_box()
-            if qb and ab:
-                x = min(qb['x'], ab['x'])
-                y = qb['y']
-                w = max(qb['x'] + qb['width'], ab['x'] + ab['width']) - x
-                h = ab['y'] + ab['height'] - y
-                return page.screenshot(clip={'x': x, 'y': y, 'width': w, 'height': h}, type='png')
+        ).first
+        if q_header and first_answer:
+            try:
+                qb = q_header.bounding_box()
+                ab = first_answer.bounding_box()
+                if qb and ab:
+                    x = min(qb['x'], ab['x'])
+                    y = qb['y']
+                    w = max(qb['x'] + qb['width'], ab['x'] + ab['width']) - x
+                    h = ab['y'] + ab['height'] - y
+                    # 安全检查：如果截取高度异常大（>5000px），可能是整页容器，
+                    # 回退到仅截图第一个回答卡片
+                    if h > 5000:
+                        return first_answer.screenshot(type='png')
+                    return page.screenshot(
+                        clip={'x': x, 'y': y, 'width': w, 'height': h},
+                        type='png'
+                    )
+            except Exception:
+                pass
     except Exception:
         pass
 
-    # 策略3：回退整页截图
+    # 策略3：寻找 "下一个回答" / "更多回答" / 分割线 作为裁剪下界
+    try:
+        answer_card = page.locator(
+            '.AnswerItem, .AnswerCard, [class*="AnswerItem"], '
+            '[class*="answer-item"]'
+        ).first
+        if answer_card:
+            try:
+                ab = answer_card.bounding_box()
+                if ab:
+                    # 查找分界线：下一个回答的标题、分隔符、"推荐阅读"等
+                    dividers = page.query_selector_all(
+                        'h2:has-text("推荐阅读"), '
+                        '[class*="NextAnswers"], '
+                        '[class*="MoreAnswers"], '
+                        '[class*="QuestionAnswers-answers"], '
+                        '[class*="List-header"]'
+                    )
+                    clip_bottom = ab['y'] + ab['height']
+                    for div in dividers:
+                        try:
+                            db = div.bounding_box()
+                            if db and db['y'] > ab['y']:
+                                clip_bottom = min(clip_bottom, db['y'])
+                        except Exception:
+                            pass
+                    return page.screenshot(
+                        clip={
+                            'x': ab['x'],
+                            'y': ab['y'],
+                            'width': ab['width'],
+                            'height': clip_bottom - ab['y']
+                        },
+                        type='png'
+                    )
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+    # 策略4：回退整页截图
     return page.screenshot(full_page=True, type='png')
+
+
+def sanitize_html_for_offline(html_text: str) -> str:
+    """
+    将知乎原始 HTML 清洗为离线友好的自包含版本：
+    1. 移除所有外部 <link> (CSS) 引用 — 避免离线时超时阻塞渲染
+    2. 移除所有 <script> 标签 — 去掉 Sentry/埋点等联网 JS
+    3. 移除所有 @font-face 和外部字体引用 — 避免 FOUT
+    4. 移除 CSS 动画/过渡 — 消除闪烁
+    5. 添加最小化的内联样式 — 保证基本可读性
+    """
+    soup = BeautifulSoup(html_text, 'lxml')
+
+    # 1. 移除外部样式表和预加载
+    for tag in soup.find_all('link', rel=re.compile(r'stylesheet|preload|preconnect|dns-prefetch', re.I)):
+        tag.decompose()
+    # 移除 canonical（避免浏览器跳转）、alternate 等
+    for tag in soup.find_all('link', rel=re.compile(r'canonical|alternate', re.I)):
+        tag.decompose()
+
+    # 2. 移除所有 <script>
+    for tag in soup.find_all('script'):
+        tag.decompose()
+
+    # 3. 移除 <noscript> 和 <meta> 刷新/重定向
+    for tag in soup.find_all('noscript'):
+        tag.decompose()
+    for tag in soup.find_all('meta', attrs={'http-equiv': re.compile(r'refresh', re.I)}):
+        tag.decompose()
+
+    # 4. 移除 <style> 中的 @font-face / @import / 动画
+    for style_tag in soup.find_all('style'):
+        if style_tag.string:
+            css = style_tag.string
+            # 移除 @font-face 块
+            css = re.sub(r'@font-face\s*\{[^}]*\}', '', css)
+            # 移除 @import
+            css = re.sub(r'@import[^;]+;', '', css)
+            # 移除 keyframes 动画
+            css = re.sub(r'@(?:-webkit-|-moz-|-o-)?keyframes\s+\S+\s*\{[^}]*\}', '', css)
+            # 移除 transition/animation 属性 (简化处理：清除这些属性值)
+            css = re.sub(r'transition\s*:\s*[^;]+;?', '', css)
+            css = re.sub(r'animation\s*:\s*[^;]+;?', '', css)
+            # 禁用所有 transition
+            css = re.sub(r'([^{};]*transition[^{};]*)', '', css)
+            style_tag.string = css
+
+    # 5. 注入基础样式 — 保证离线可读
+    base_style = """
+    body {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        font-size: 16px;
+        line-height: 1.8;
+        color: #1a1a1a;
+        background: #fff;
+        -webkit-font-smoothing: antialiased;
+    }
+    img {
+        max-width: 100%;
+        height: auto;
+    }
+    pre, code {
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+    """
+    style_el = soup.new_tag('style')
+    style_el.string = base_style
+    head = soup.find('head')
+    if head:
+        head.insert(0, style_el)
+
+    # 6. 移除固定定位元素（知乎导航栏等）
+    for tag in soup.find_all(style=re.compile(r'position\s*:\s*fixed')):
+        tag.decompose()
+
+    # 7. 移除懒加载占位属性，让图片直接显示
+    for img in soup.find_all('img'):
+        if img.get('data-src') or img.get('data-original'):
+            actual_src = img.get('data-src') or img.get('data-original') or ''
+            img['src'] = actual_src
+        # 移除懒加载 class（避免触发淡入动画残留样式）
+        classes = img.get('class', [])
+        if classes:
+            img['class'] = [c for c in classes if 'lazy' not in c.lower()]
+
+    return str(soup)
 
 
 def crawl_answer_combined(page: Page, item: dict,
@@ -464,7 +632,8 @@ def crawl_answer_combined(page: Page, item: dict,
     """
     混合模式：一次页面访问，同时获取截图 + 文字（含内嵌图片）
     上半部分 = 内容区截图（问题+回答，排除右侧栏），下半部分 = 可搜索/复制的文字
-    返回 {meta, md_text, screenshot_base64, html_text}
+    截图保存为独立 PNG 文件（{answer_id}.png），MD 中用相对路径引用
+    返回 {meta, md_text, screenshot_bytes, html_text}
     """
     answer_id = item['answer_id']
     url = item['url']
@@ -508,10 +677,13 @@ def crawl_answer_combined(page: Page, item: dict,
 
         # ── 4. 截图：仅问题+回答内容区（排除右侧栏）──
         screenshot_bytes = _capture_answer_area(page)
+        # 截图以 base64 data URI 嵌入 MD，保证 MD 文件移动到任意位置后图片仍可显示
         screenshot_b64 = base64.b64encode(screenshot_bytes).decode('ascii')
 
         # ── 5. 提取文字内容 ──
-        html_text = page.content()
+        raw_html = page.content()
+        # 清洗 HTML：去除外部依赖，生成离线友好的自包含版本
+        html_text = sanitize_html_for_offline(raw_html)
         meta = extract_answer_meta(html_text)
         meta['answer_id'] = answer_id
         meta['title'] = title or meta.get('title', '')
@@ -574,6 +746,9 @@ def crawl_answer_combined(page: Page, item: dict,
             colls = user_profile.get('collections', 0)
             if colls:
                 parts.append(f"收藏 {colls:,}")
+            pedits = user_profile.get('public_edits', 0)
+            if pedits:
+                parts.append(f"公共编辑 {pedits:,}")
             answers = user_profile.get('answers_count', 0)
             if answers:
                 parts.append(f"回答 {answers:,}")
@@ -618,7 +793,7 @@ def crawl_answer_combined(page: Page, item: dict,
         return {
             'meta': meta,
             'md_text': md_text,
-            'screenshot_base64': screenshot_b64,
+            'screenshot_bytes': screenshot_bytes,
             'html_text': html_text,
         }
 
@@ -637,7 +812,7 @@ def crawl_answer_combined(page: Page, item: dict,
         return {
             'meta': meta,
             'md_text': f"# {title}\n\n> 🕒 证据采集时间: {meta['crawl_time']}\n\n> 混合模式失败: {e}",
-            'screenshot_base64': '',
+            'screenshot_bytes': b'',
             'html_text': '',
         }
 
@@ -663,7 +838,8 @@ def get_crawl_status(user_id: str) -> dict:
 
 
 def crawl_user_answers(page: Page, user_id: str,
-                       force_recrawl_ids: set = None) -> dict:
+                       force_recrawl_ids: set = None,
+                       stop_event=None) -> dict:
     """
     爬取指定用户的所有回答
 
@@ -672,11 +848,16 @@ def crawl_user_answers(page: Page, user_id: str,
         user_id: 用户 ID（纯字符串）
         force_recrawl_ids: 强制重新爬取的回答 ID 集合
                            （这些 ID 即使有进度记录也会重新爬取）
+        stop_event: threading.Event，用于支持 GUI 中途停止
 
     返回统计信息
     """
-    # 预检查文件状态
-    output_dir = get_output_path(config.output_dir, user_id)
+    # 先采集用户影响力数据（获取昵称用于目录命名）
+    user_profile = scrape_user_profile(page, user_id)
+    nickname = user_profile.get('nickname', '')
+
+    # 预检查文件状态（使用含昵称的目录名；首次运行时会自动迁移旧目录）
+    output_dir = get_output_path(config.output_dir, user_id, nickname)
     existing, missing, _ = check_missing_files(output_dir)
     completed_set = load_progress(output_dir)
 
@@ -696,32 +877,47 @@ def crawl_user_answers(page: Page, user_id: str,
             print(f"🔄 强制重新爬取 {len(removed)} 条（本地文件缺失）")
 
     print(f"\n{'='*60}")
-    print(f"🐾 开始爬取用户: {user_id}")
+    print(f"🐾 开始爬取用户: {nickname or user_id} ({user_id})")
     print(f"{'='*60}")
 
-    # 测试模式：强制限制为 5 条
+    # 测试模式：强制限制为 3 条
     max_answers = config.max_answers
     if config.test_mode:
-        max_answers = 5
-        print("🧪 测试模式：只爬取前 5 条回答")
+        max_answers = 3
+        print("🧪 测试模式：只爬取前 3 条回答")
         print()
 
     print("🎯 混合模式：截图(保留原文排版) + 文字(可搜索/复制) + base64图片嵌入")
     print()
-
-    # 采集用户影响力数据（每条 MD 都会记录）
-    user_profile = scrape_user_profile(page, user_id)
 
     print(f"📁 输出目录: {output_dir}")
     print(f"📋 已完成: {len(completed_set)} 条"
           + (f" (其中 {len(missing)} 条本地文件缺失)" if missing else ""))
 
     # 收集回答链接
-    items = collect_answer_links(page, user_id, max_answers)
+    try:
+        items = collect_answer_links(page, user_id, max_answers, stop_event=stop_event)
+    except StopCrawlException:
+        print("\n  ⚠ 用户手动停止（收集链接阶段）")
+        items = []
 
     # 过滤已完成的（force_recrawl_ids 已从 completed_set 中移除）
     new_items = [it for it in items if it['answer_id'] not in completed_set]
     skipped = len(items) - len(new_items)
+
+    if _is_stopped(stop_event) and len(items) == 0:
+        # 在收集链接阶段被停止且未收集到任何内容，直接保存进度返回
+        print("⚠ 收集链接阶段被停止，未获取到回答列表")
+        save_progress(output_dir, completed_set, file_map={})
+        return {
+            'user_id': user_id,
+            'success': 0,
+            'failed': 0,
+            'skipped': skipped,
+            'total': len(completed_set),
+            'output_dir': str(output_dir),
+        }
+
     if skipped > 0:
         print(f"⏭ 跳过 {skipped} 条已完成")
     print(f"📝 待爬取: {len(new_items)} 条\n")
@@ -733,60 +929,75 @@ def crawl_user_answers(page: Page, user_id: str,
     failed = 0
 
     for i, item in enumerate(new_items):
-        print(f"[{i + 1}/{len(new_items)}] ", end="")
+        # 检查停止信号
+        if _is_stopped(stop_event):
+            print("\n  ⚠ 用户手动停止（爬取阶段）")
+            break
 
-        aid = item['answer_id']
-        # 短时缓存检查
-        cached = load_answer_cache(output_dir, aid)
-        if cached:
-            result = cached
-            print(f"📦 缓存命中: {item.get('title', '')[:30]}...")
-        else:
-            result = crawl_answer_combined(page, item, user_profile=user_profile)
+        try:
+            print(f"[{i + 1}/{len(new_items)}] ", end="")
+
+            aid = item['answer_id']
+            # 短时缓存检查
+            cached = load_answer_cache(output_dir, aid)
+            if cached:
+                result = cached
+                # 缓存中 screenshot_bytes 以 base64 存储，需还原
+                if 'screenshot_bytes' in result and isinstance(result['screenshot_bytes'], str):
+                    result['screenshot_bytes'] = base64.b64decode(result['screenshot_bytes'])
+                print(f"📦 缓存命中: {item.get('title', '')[:30]}...")
+            else:
+                result = crawl_answer_combined(page, item, user_profile=user_profile)
+                if result and result['md_text']:
+                    # 缓存时 screenshot_bytes 转为 base64（JSON 兼容）
+                    cache_result = dict(result)
+                    if 'screenshot_bytes' in cache_result:
+                        cache_result['screenshot_bytes'] = base64.b64encode(
+                            cache_result['screenshot_bytes']
+                        ).decode('ascii')
+                    save_answer_cache(output_dir, aid, cache_result)
             if result and result['md_text']:
-                save_answer_cache(output_dir, aid, result)
-        if result and result['md_text']:
-            fpath = save_answer(
-                output_dir,
-                result['meta'],
-                result['md_text'],
-                result.get('html_text', '')
-            )
-            all_meta.append(result['meta'])
-            completed_set.add(item['answer_id'])
-            file_map[item['answer_id']] = fpath.name
-            success += 1
-            print(f"    ✓ 已保存(混合): {fpath.name}")
+                fpath = save_answer(
+                    output_dir,
+                    result['meta'],
+                    result['md_text'],
+                    result.get('html_text', '')
+                )
+                # 截图已 base64 嵌入 MD 中，无需单独保存 PNG 文件
+                all_meta.append(result['meta'])
+                completed_set.add(item['answer_id'])
+                file_map[item['answer_id']] = fpath.name
+                success += 1
+                print(f"    ✓ 已保存(混合): {fpath.name}")
 
-            # 每 10 条保存一次进度
-            if success % 10 == 0:
-                save_progress(output_dir, completed_set, file_map=file_map)
-                file_map.clear()
-        else:
-            failed += 1
-            print(f"    ✗ 混合模式失败")
+                # 每 10 条保存一次进度
+                if success % 10 == 0:
+                    save_progress(output_dir, completed_set, file_map=file_map)
+                    file_map.clear()
+            else:
+                failed += 1
+                print(f"    ✗ 混合模式失败")
 
-        # 延迟
-        if i < len(new_items) - 1:
-            random_delay(
-                config.page_delay_min,
-                config.page_delay_max,
-                "防止请求过快"
-            )
+            # 延迟
+            if i < len(new_items) - 1:
+                if _is_stopped(stop_event):
+                    print("\n  ⚠ 用户手动停止（爬取阶段）")
+                    break
+                random_delay(
+                    config.page_delay_min,
+                    config.page_delay_max,
+                    "防止请求过快",
+                    stop_check=lambda: _is_stopped(stop_event) if stop_event else False
+                )
+        except StopCrawlException:
+            print("\n  ⚠ 用户手动停止（延迟中）")
+            break
 
     # 最终保存（file_map 合并写入 progress.json，历史记录不会丢失）
     save_progress(output_dir, completed_set, file_map=file_map)
     save_index(output_dir, all_meta)
 
-    # 法务模式/默认：生成证据采集报告（扫描全量文件）
-    if config.forensic_mode or config.save_html:
-        from storage import save_evidence_report, load_progress_with_files
-        _, full_file_map = load_progress_with_files(output_dir)
-        stats = {'total': len(completed_set), 'success': success,
-                 'failed': failed, 'skipped': skipped}
-        save_evidence_report(output_dir, user_id, all_meta, full_file_map,
-                           stats, user_profile)
-        print(f"🔒 证据采集报告已生成: EVIDENCE_REPORT.md")
+    # EVIDENCE_REPORT.md 暂不生成，需要时单独提出
 
     print(f"\n{'='*60}")
     print(f"✅ {user_id} 爬取完成")
@@ -801,7 +1012,224 @@ def crawl_user_answers(page: Page, user_id: str,
         'failed': failed,
         'skipped': skipped,
         'total': len(completed_set),
+        'output_dir': str(output_dir),
     }
+
+
+def crawl_single_url(page: Page, url: str, output_dir: str = None) -> dict:
+    """
+    手动给定链接 → 保存为 MD
+
+    支持格式:
+        - https://www.zhihu.com/question/{qid}/answer/{aid}  （回答）
+        - https://www.zhihu.com/answer/{aid}                  （短链回答，浏览器会自动跳转）
+
+    返回 {success: bool, md_path: str, meta: dict, error: str}
+    """
+    # 解析 URL 提取 answer_id
+    answer_id = ""
+    qid_from_url = ""
+    m = re.search(r'zhihu\.com/question/(\d+)/answer/(\d+)', url)
+    if m:
+        qid_from_url = m.group(1)
+        answer_id = m.group(2)
+    else:
+        m = re.search(r'zhihu\.com/answer/(\d+)', url)
+        if m:
+            answer_id = m.group(1)
+        else:
+            return {'success': False, 'md_path': '', 'meta': {}, 'error': f'无法从链接中提取回答ID: {url}'}
+
+    print(f"\n🔗 手动保存单条回答: {url}")
+    print(f"   answer_id: {answer_id}")
+
+    # 基础输出目录（稍后追加作者子目录）
+    if output_dir:
+        base_dir = Path(output_dir)
+    else:
+        base_dir = Path(config.output_dir) / "manual"
+
+    try:
+        # ── 导航 & 等待渲染 ──
+        page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        time.sleep(3)
+
+        try:
+            page.wait_for_selector(
+                '.RichContent-inner, .RichContent, '
+                '[class*="answer-content"], [class*="AnswerItem"], '
+                '.QuestionHeader, .ContentItem',
+                timeout=10000
+            )
+        except Exception:
+            pass
+
+        # ── 展开折叠内容 ──
+        try:
+            expand_btn = page.locator(
+                'button:has-text("阅读全文"), '
+                '.RichContent-uncollapse, '
+                '[class*="expand"], [class*="unfold"]'
+            ).first
+            if expand_btn.count() > 0 and expand_btn.is_visible():
+                expand_btn.click()
+                time.sleep(1.5)
+        except Exception:
+            pass
+
+        # ── 等待图片加载 ──
+        try:
+            page.wait_for_load_state('networkidle', timeout=10000)
+        except Exception:
+            pass
+
+        # ── 提取页面内容 ──
+        html = page.content()
+
+        # 提取问题标题
+        title = ""
+        try:
+            title_el = page.locator('.QuestionHeader-title, h1.QuestionHeader-title, '
+                                    '[class*="QuestionHeader"] h1, h1[class*="title"]').first
+            if title_el.count() > 0:
+                title = title_el.inner_text().strip()
+        except Exception:
+            pass
+        if not title:
+            m = re.search(r'<h1[^>]*class="[^"]*title[^"]*"[^>]*>(.*?)</h1>', html)
+            if m:
+                title = re.sub(r'<[^>]+>', '', m.group(1)).strip()
+        if not title:
+            title = "手动保存回答"
+
+        # 提取作者 & 作者 ID（用于按用户分类目录）
+        author = ""
+        author_id = ""
+        try:
+            author_el = page.locator('.AuthorInfo-name, .UserLink-link, '
+                                     '[class*="author"] a[class*="name"], '
+                                     '.ContentItem-authorInfo a').first
+            if author_el.count() > 0:
+                author = author_el.inner_text().strip()
+                href = author_el.get_attribute('href') or ''
+                m_aid = re.search(r'/people/([^/?]+)', href)
+                if m_aid:
+                    author_id = m_aid.group(1)
+        except Exception:
+            pass
+        # 如果上面没拿到 author_id，尝试从页面其他位置提取
+        if not author_id:
+            try:
+                any_author_link = page.locator('a[href*="/people/"]').first
+                if any_author_link.count() > 0:
+                    href = any_author_link.get_attribute('href') or ''
+                    m_aid = re.search(r'/people/([^/?]+)', href)
+                    if m_aid:
+                        author_id = m_aid.group(1)
+            except Exception:
+                pass
+
+        # 提取日期
+        from utils import extract_date_from_html
+        date = extract_date_from_html(html)
+
+        # 清理 HTML → MD
+        from converter import html_to_md
+        meta = {
+            'title': title,
+            'answer_id': answer_id,
+            'answer_url': url,
+            'author': author,
+            'date': date,
+            'upvotes': 0,
+            'comment_count': 0,
+            'crawl_time': time.strftime('%Y-%m-%d %H:%M:%S'),
+        }
+        text_md = html_to_md(html, answer_meta=meta)
+
+        # 内容图片 base64 嵌入
+        from storage import embed_images_base64
+        text_md = embed_images_base64(text_md)
+
+        # ── 截图 ──
+        screenshot_bytes = _capture_answer_area(page)
+        screenshot_b64 = base64.b64encode(screenshot_bytes).decode('ascii')
+
+        # ── 合并 MD ──
+        lines = []
+        lines.append(f"# [{title}]({url})")
+        lines.append("")
+        meta_line = ""
+        if author:
+            meta_line += f"**{author}**"
+        if date:
+            meta_line += f" / {date}" if meta_line else date
+        if meta_line:
+            lines.append(meta_line)
+            lines.append("")
+        lines.append(f"> 🔗 原文链接: [{url}]({url})")
+        lines.append(f"> 🕒 保存时间: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+        lines.append("## 📸 原页面截图")
+        lines.append("")
+        lines.append(f"![问题与回答截图](data:image/png;base64,{screenshot_b64})")
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+        lines.append("## 📝 文字内容")
+        lines.append("")
+
+        # 提取 body 内容（去掉 text_md 中重复的标题/元信息）
+        text_lines = text_md.split('\n')
+        content_start = 0
+        for j, line in enumerate(text_lines):
+            if line.strip() == '---':
+                content_start = j + 1
+                while content_start < len(text_lines) and text_lines[content_start].strip() == '':
+                    content_start += 1
+                break
+        if content_start > 0 and content_start < len(text_lines):
+            lines.extend(text_lines[content_start:])
+        else:
+            lines.extend(text_lines[2:])
+
+        md_text = '\n'.join(lines)
+
+        # ── 按作者分类目录 ──
+        if author_id:
+            user_dir = base_dir / author_id
+        elif author:
+            user_dir = base_dir / sanitize_filename(author, 40)
+        else:
+            user_dir = base_dir / "unknown"
+        user_dir.mkdir(parents=True, exist_ok=True)
+
+        # ── 保存 MD ──
+        safe_title = sanitize_filename(title, 60)
+        safe_date = format_datetime(date) if date else time.strftime('%Y-%m-%d')
+        md_filename = f"{safe_date}_{safe_title}_{answer_id[:8]}.md"
+        md_path = user_dir / md_filename
+        md_path.write_text(md_text, encoding='utf-8')
+
+        print(f"  ✓ 已保存: {md_path}")
+        return {
+            'success': True,
+            'md_path': str(md_path),
+            'meta': meta,
+            'error': '',
+        }
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {
+            'success': False,
+            'md_path': '',
+            'meta': {},
+            'error': str(e),
+        }
 
 
 def scrape_user_profile(page: Page, user_id: str) -> dict:
@@ -810,8 +1238,8 @@ def scrape_user_profile(page: Page, user_id: str) -> dict:
 
     返回 dict:
         nickname, followers, following, upvotes_received,
-        likes_received, collections, answers_count, articles_count,
-        profile_url, bio
+        likes_received, collections, public_edits,
+        answers_count, articles_count, profile_url, bio
     """
     profile_url = f"https://www.zhihu.com/people/{user_id}"
     result = {
@@ -821,6 +1249,7 @@ def scrape_user_profile(page: Page, user_id: str) -> dict:
         'upvotes_received': 0,
         'likes_received': 0,
         'collections': 0,
+        'public_edits': 0,
         'answers_count': 0,
         'articles_count': 0,
         'profile_url': profile_url,
@@ -877,7 +1306,7 @@ def scrape_user_profile(page: Page, user_id: str) -> dict:
             except Exception:
                 pass
 
-        # 策略3: 从页面meta/结构化数据提取
+        # 策略3: 从页面meta/结构化数据提取（旧版知乎） 
         try:
             html = page.content()
             soup = BeautifulSoup(html, 'html.parser')
@@ -919,9 +1348,147 @@ def scrape_user_profile(page: Page, user_id: str) -> dict:
         except Exception:
             pass
 
+        # 策略4：右侧个人成就卡片（新版知乎 Profile-sidebar）
+        # 包含 赞同/感谢/收藏/关注者/关注了/公共编辑 等统计
+        # 始终执行 —— 侧栏卡片数据可能与顶部统计不同，且常含顶部缺失的字段
+        try:
+            # 4a: 右侧栏卡片内的数据行（key-value 配对）
+            rows = page.query_selector_all(
+                '[class*="Profile-sidebar"] [class*="NumberBoard-item"],'
+                ' [class*="Profile-sidebar"] [class*="Card"] [class*="Row"],'
+                ' [class*="Profile-sidebar"] [class*="Content"] [class*="Row"],'
+                ' [class*="css-"][class*="-j9mia3"]'  # CSS-in-JS 样式类
+            )
+            if not rows:
+                # 4b: 更宽泛匹配 —— 任何包含关键词的可点击数字区域
+                rows = page.query_selector_all(
+                    ':has-text("赞同"), :has-text("关注者"), :has-text("感谢"),'
+                    ' :has-text("收藏"), :has-text("关注了"),'
+                    ' :has-text("喜欢"), :has-text("公共编辑")'
+                )
+            for row in rows:
+                try:
+                    text = row.inner_text().strip()
+
+                    # --- 匹配 "2,862 赞同" / "赞同 2,862" 等单项 ---
+                    m = re.search(
+                        r'([\d,.万]+)\s*(赞同|感谢|收藏\s*(?!夹)|喜欢)'
+                        r'|(赞同|感谢|收藏\s*(?!夹)|喜欢)\s*([\d,.万]+)',
+                        text
+                    )
+                    if m:
+                        num_str = m.group(1) or m.group(4)
+                        label = m.group(2) or m.group(3)
+                        v = _parse_zhihu_number(num_str)
+                        if label and v > 0:
+                            if '赞同' in label:
+                                result['upvotes_received'] = max(result['upvotes_received'], v)
+                            elif '感谢' in label and result['likes_received'] == 0:
+                                # 感谢 ≈ 喜欢 (知乎旧版叫「感谢」)
+                                result['likes_received'] = v
+                            elif '收藏' in label:
+                                result['collections'] = max(result['collections'], v)
+                            elif '喜欢' in label:
+                                result['likes_received'] = max(result['likes_received'], v)
+
+                    # --- 匹配 "获得 1,862 次喜欢，18 次收藏" 合并格式 ---
+                    cm = re.search(
+                        r'获得\s*([\d,.万]+)\s*次?喜欢.*?([\d,.万]+)\s*次?收藏',
+                        text
+                    )
+                    if cm:
+                        v_like = _parse_zhihu_number(cm.group(1))
+                        v_coll = _parse_zhihu_number(cm.group(2))
+                        if v_like > 0:
+                            result['likes_received'] = max(result['likes_received'], v_like)
+                        if v_coll > 0:
+                            result['collections'] = max(result['collections'], v_coll)
+
+                    # --- 匹配 "参与 33 次公共编辑" ---
+                    pm = re.search(
+                        r'参与\s*([\d,.万]+)\s*次.*公共编辑',
+                        text
+                    )
+                    if pm:
+                        v = _parse_zhihu_number(pm.group(1))
+                        if v > 0:
+                            result['public_edits'] = max(result['public_edits'], v)
+
+                    # --- 匹配 "1,455 关注者" 或 "288 关注了" ---
+                    fm = re.search(
+                        r'([\d,.万]+)\s*(关注者|关注了)'
+                        r'|(关注者|关注了)\s*([\d,.万]+)',
+                        text
+                    )
+                    if fm:
+                        num_str = fm.group(1) or fm.group(4)
+                        label = fm.group(2) or fm.group(3)
+                        v = _parse_zhihu_number(num_str)
+                        if label and v > 0:
+                            if '关注者' in label:
+                                result['followers'] = max(result['followers'], v)
+                            elif '关注了' in label:
+                                result['following'] = max(result['following'], v)
+                except Exception:
+                    pass
+
+            # 4c: JavaScript 评估 —— 从 React 状态提取数据（兜底）
+            try:
+                js_data = page.evaluate("""() => {
+                    const items = document.querySelectorAll(
+                        '[class*="Profile-sidebar"] [class*="NumberBoard-item"],'
+                        + ' [class*="Card"] [class*="NumberBoard-item"],'
+                        + ' [class*="Profile-sidebar"] [class*="Achievements"],'
+                        + ' [class*="Profile-sidebar"] [class*="Card"]'
+                    );
+                    return Array.from(items).map(el => el.innerText);
+                }""")
+                for item_text in js_data:
+                    # 常规 key-value
+                    m = re.search(r'([\d,.万]+)\s*\n?\s*(关注者|关注了|赞同|感谢|喜欢|收藏)',
+                                  item_text)
+                    if m:
+                        v = _parse_zhihu_number(m.group(1))
+                        label = m.group(2)
+                        if label == '关注者' and v > 0:
+                            result['followers'] = max(result['followers'], v)
+                        elif label == '关注了' and v > 0:
+                            result['following'] = max(result['following'], v)
+                        elif label == '赞同' and v > 0:
+                            result['upvotes_received'] = max(result['upvotes_received'], v)
+                        elif label == '感谢' and v > 0:
+                            result['likes_received'] = max(result['likes_received'], v)
+                        elif label == '喜欢' and v > 0:
+                            result['likes_received'] = max(result['likes_received'], v)
+                        elif label == '收藏' and v > 0:
+                            result['collections'] = max(result['collections'], v)
+                    # 合并格式 "获得 1,862 次喜欢，18 次收藏"
+                    cm = re.search(
+                        r'获得\s*([\d,.万]+)\s*次?喜欢.*?([\d,.万]+)\s*次?收藏',
+                        item_text
+                    )
+                    if cm:
+                        v_like = _parse_zhihu_number(cm.group(1))
+                        v_coll = _parse_zhihu_number(cm.group(2))
+                        if v_like > 0:
+                            result['likes_received'] = max(result['likes_received'], v_like)
+                        if v_coll > 0:
+                            result['collections'] = max(result['collections'], v_coll)
+                    # 公共编辑
+                    pm = re.search(r'参与\s*([\d,.万]+)\s*次.*公共编辑', item_text)
+                    if pm:
+                        v = _parse_zhihu_number(pm.group(1))
+                        if v > 0:
+                            result['public_edits'] = max(result['public_edits'], v)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
         # 汇总日志
-        print(f"  👍 赞同: {result['upvotes_received']} | 👥 关注者: {result['followers']}"
-              f" | 📝 回答: {result['answers_count']}")
+        print(f"  👍 赞同: {result['upvotes_received']} | ❤️ 喜欢: {result['likes_received']}"
+              f" | ⭐ 收藏: {result['collections']} | ✏️ 公共编辑: {result['public_edits']}"
+              f" | 👥 关注者: {result['followers']} | 📝 回答: {result['answers_count']}")
 
     except Exception as e:
         print(f"  ⚠ 用户影响力采集失败: {e}")

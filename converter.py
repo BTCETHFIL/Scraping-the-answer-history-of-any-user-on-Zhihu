@@ -6,6 +6,8 @@ import re
 from bs4 import BeautifulSoup
 import html2text
 
+from utils import extract_date_from_html
+
 # 初始化 html2text 转换器
 _md = html2text.HTML2Text()
 _md.body_width = 0          # 不自动换行
@@ -39,8 +41,8 @@ def clean_html(html: str) -> str:
     ):
         tag.decompose()
 
-    # 移除广告卡片
-    for tag in soup.select('[class*="Advert"], [class*="advert"], [class*="EcomCard"]'):
+    # 移除广告卡片（class_ + regex 比 CSS [class*=] 更可靠）
+    for tag in soup.find_all(class_=re.compile(r'[Aa]dvert|EcomCard', re.I)):
         tag.decompose()
 
     # 移除空的 div/span
@@ -122,7 +124,6 @@ def extract_answer_meta(html: str) -> dict:
                 meta['comment_count'] = int(float(v))
 
     # 日期（多策略提取，支持完整时间）
-    from utils import extract_date_from_html
     meta['date'] = extract_date_from_html(html)
 
     return meta

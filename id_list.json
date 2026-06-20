@@ -4,8 +4,149 @@
       "user_id": "44-41-80-77",
       "nickname": "祈祈",
       "url": "https://www.zhihu.com/people/44-41-80-77",
+      "crawl_history": [
+        {
+          "date": "2026-06-19 06:25:29",
+          "answers_scraped": 5,
+          "output_dir": "output\\44-41-80-77"
+        },
+        {
+          "date": "2026-06-19 06:36:59",
+          "answers_scraped": 5,
+          "output_dir": "output\\44-41-80-77"
+        },
+        {
+          "date": "2026-06-19 06:50:34",
+          "answers_scraped": 5,
+          "output_dir": "output\\44-41-80-77"
+        },
+        {
+          "date": "2026-06-19 07:01:47",
+          "answers_scraped": 5,
+          "output_dir": "output\\44-41-80-77"
+        }
+      ]
+    },
+    {
+      "user_id": "magiculture",
+      "nickname": "magiculture",
+      "url": "https://www.zhihu.com/people/magiculture",
+      "crawl_history": [
+        {
+          "date": "2026-06-19 09:14:04",
+          "answers_scraped": 3,
+          "output_dir": "output\\magiculture"
+        }
+      ]
+    },
+    {
+      "user_id": "lu-guo-63-72-64",
+      "nickname": "晓看天色暮看云",
+      "url": "https://www.zhihu.com/people/lu-guo-63-72-64",
+      "crawl_history": [
+        {
+          "date": "2026-06-19 09:21:12",
+          "answers_scraped": 3,
+          "output_dir": "output\\lu-guo-63-72-64"
+        }
+      ]
+    },
+    {
+      "user_id": "luo-bo-te-6",
+      "nickname": "罗伯特",
+      "url": "https://www.zhihu.com/people/luo-bo-te-6",
+      "crawl_history": []
+    },
+    {
+      "user_id": "wu-you-86-68",
+      "nickname": "无幽",
+      "url": "https://www.zhihu.com/people/wu-you-86-68",
+      "crawl_history": []
+    },
+    {
+      "user_id": "Mr.Samuel",
+      "nickname": "Mr.Samuel",
+      "url": "https://www.zhihu.com/people/Mr.Samuel",
+      "crawl_history": []
+    },
+    {
+      "user_id": "xiong-qia-67",
+      "nickname": "熊卡",
+      "url": "https://www.zhihu.com/people/xiong-qia-67",
+      "crawl_history": []
+    },
+    {
+      "user_id": "xiao-f-45-5",
+      "nickname": "小F",
+      "url": "https://www.zhihu.com/people/xiao-f-45-5",
+      "crawl_history": []
+    },
+    {
+      "user_id": "tian-liang-yao-xi-lian",
+      "nickname": "知乎乱弹琴",
+      "url": "https://www.zhihu.com/people/tian-liang-yao-xi-lian",
+      "crawl_history": []
+    },
+    {
+      "user_id": "tang-feng-88-54",
+      "nickname": "NoxtanG",
+      "url": "https://www.zhihu.com/people/tang-feng-88-54",
+      "crawl_history": []
+    },
+    {
+      "user_id": "qing-huan-52-98",
+      "nickname": "清欢",
+      "url": "https://www.zhihu.com/people/qing-huan-52-98",
+      "crawl_history": []
+    },
+    {
+      "user_id": "jjjjjj-12-85",
+      "nickname": "jjjjjj",
+      "url": "https://www.zhihu.com/people/jjjjjj-12-85",
+      "crawl_history": []
+    },
+    {
+      "user_id": "mig25",
+      "nickname": "米格25",
+      "url": "https://www.zhihu.com/people/mig25",
+      "crawl_history": [
+        {
+          "date": "2026-06-19 11:50:13",
+          "answers_scraped": 80,
+          "output_dir": "output\\米格二十五_mig25"
+        }
+      ]
+    },
+    {
+      "user_id": "chen-xiao-87-91",
+      "nickname": "chen xiao",
+      "url": "https://www.zhihu.com/people/chen-xiao-87-91",
+      "crawl_history": []
+    },
+    {
+      "user_id": "ppgg-68",
+      "nickname": "ppgg",
+      "url": "https://www.zhihu.com/people/ppgg-68",
+      "crawl_history": []
+    },
+    {
+      "user_id": "gong-xiao-yu-55",
+      "nickname": "龚小雨",
+      "url": "https://www.zhihu.com/people/gong-xiao-yu-55",
+      "crawl_history": []
+    },
+    {
+      "user_id": "dang-zheng-50",
+      "nickname": "dang-zheng-50",
+      "url": "https://www.zhihu.com/people/dang-zheng-50",
+      "crawl_history": []
+    },
+    {
+      "user_id": "wu-liang-jun-25",
+      "nickname": "巫凉菌",
+      "url": "https://www.zhihu.com/people/wu-liang-jun-25",
       "crawl_history": []
     }
   ],
-  "updated": "2026-06-19 00:26:32"
+  "updated": "2026-06-19 22:51:18"
 }

@@ -2,31 +2,68 @@
 工具函数模块
 """
 
+import json
 import re
 import random
 import time
 from pathlib import Path
 
+from bs4 import BeautifulSoup, element
 
-def random_delay(min_s: float, max_s: float, reason: str = ""):
-    """随机延迟，模拟人类浏览行为"""
+
+def random_delay(min_s: float, max_s: float, reason: str = "",
+                 stop_check=None):
+    """随机延迟，模拟人类浏览行为。
+    如果提供 stop_check 回调，会在延迟期间分片检查停止信号。
+    检测到停止信号时抛出 StopCrawlException 让调用方中断。
+    """
     delay = random.uniform(min_s, max_s)
     if reason:
         print(f"  ⏳ {reason}，等待 {delay:.1f}s...")
     else:
         print(f"  ⏳ 等待 {delay:.1f}s...")
-    time.sleep(delay)
+
+    # 如果有停止检查，分片 sleep（每 0.5s 检查一次）
+    if stop_check is not None:
+        remaining = delay
+        while remaining > 0:
+            chunk = min(0.5, remaining)
+            time.sleep(chunk)
+            remaining -= chunk
+            if stop_check():
+                print("  ⚠ 用户手动停止（延迟中）")
+                raise StopCrawlException("stop")
+    else:
+        time.sleep(delay)
+
+
+class StopCrawlException(Exception):
+    """爬取被手动停止的异常"""
+    pass
 
 
 def extract_user_id(target: str) -> str:
     """从各种格式中提取用户 ID
     支持: 完整URL、用户ID、/people/xxx/answers
+    也支持知乎App复制的带文字链接（自动提取其中的URL）
     """
     target = target.strip()
-    # 从 URL 中提取
-    m = re.search(r'zhihu\.com/people/([^/?]+)', target)
-    if m:
-        return m.group(1)
+    # 先用正则提取文本中所有知乎链接
+    all_urls = re.findall(r'https?://[^\s]*zhihu\.com[^\s]*', target)
+    # 优先匹配 people URL
+    for url in all_urls:
+        m = re.search(r'zhihu\.com/people/([^/?]+)', url)
+        if m:
+            return m.group(1)
+    # 如果找到了回答链接但没有 people 链接
+    if any('/answer/' in u for u in all_urls):
+        raise ValueError(
+            "检测到「回答链接」，请输入用户主页链接（https://www.zhihu.com/people/xxx）\n"
+            "提示：回答链接请粘贴到下方「手动链接保存为 MD」区域"
+        )
+    # 如果存在其他知乎链接（如问题链接）
+    if all_urls:
+        raise ValueError(f"未找到用户主页链接，请粘贴 https://www.zhihu.com/people/xxx 格式")
     # 如果已经是纯 ID
     if re.match(r'^[a-zA-Z0-9_-]+$', target):
         return target
@@ -75,8 +112,6 @@ def extract_date_from_html(html_or_soup) -> str:
     4. 文本中的日期模式 (YYYY-MM-DD / YYYY年MM月DD日 / MM-DD 等)
     返回 YYYY-MM-DD 格式的日期字符串，失败返回空字符串。
     """
-    from bs4 import BeautifulSoup, element
-
     if isinstance(html_or_soup, str):
         soup = BeautifulSoup(html_or_soup, 'lxml')
     elif isinstance(html_or_soup, element.Tag):
@@ -121,7 +156,6 @@ def extract_date_from_html(html_or_soup) -> str:
     # 策略 3: JSON-LD 结构化数据
     for script in soup.select('script[type="application/ld+json"]'):
         try:
-            import json
             data = json.loads(script.string or '{}')
             if isinstance(data, list):
                 data = data[0] if data else {}
@@ -164,8 +198,45 @@ def extract_date_from_html(html_or_soup) -> str:
     return ''
 
 
-def get_output_path(output_dir: str, user_id: str) -> Path:
-    """获取用户的输出目录"""
-    p = Path(output_dir) / user_id
+def get_output_path(output_dir: str, user_id: str, nickname: str = "") -> Path:
+    """获取用户的输出目录，如有昵称则加入目录名便于识别"""
+    # 构建目录名：{nickname}_{user_id} 或 {user_id}
+    if nickname and nickname != user_id:
+        safe_nickname = sanitize_filename(nickname, 30)
+        dirname = f"{safe_nickname}_{user_id}"
+    else:
+        dirname = user_id
+
+    p = Path(output_dir) / dirname
+
+    # 迁移：如果旧目录 {user_id} 存在，将内容移入新目录
+    old_p = Path(output_dir) / user_id
+    if old_p.exists() and old_p.resolve() != p.resolve():
+        _migrate_dir(old_p, p)
+
     p.mkdir(parents=True, exist_ok=True)
     return p
+
+
+def _migrate_dir(src: Path, dst: Path):
+    """将旧目录中的文件迁移到新目录"""
+    import shutil
+    dst.mkdir(parents=True, exist_ok=True)
+    moved = 0
+    for item in src.iterdir():
+        target = dst / item.name
+        if not target.exists():
+            try:
+                shutil.move(str(item), str(target))
+                moved += 1
+            except Exception:
+                pass
+    if moved > 0:
+        print(f"📦 已将旧目录内容迁移: {src.name} → {dst.name}")
+    # 源目录为空则删除
+    try:
+        remaining = list(src.iterdir())
+        if not remaining:
+            src.rmdir()
+    except Exception:
+        pass

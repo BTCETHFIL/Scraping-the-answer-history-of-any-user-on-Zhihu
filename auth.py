@@ -52,9 +52,11 @@ def load_manual_cookies(cookie_path: Path) -> list:
 def inject_manual_cookies(page: Page, cookies: list):
     """将 Cookie 列表注入到浏览器"""
     for c in cookies:
-        # Playwright 要求 domain 开头带 .
-        if 'domain' in c and not c['domain'].startswith('.'):
-            c['domain'] = '.' + c['domain']
+        # Playwright 要求 domain 开头带 .（避免重复添加成 ..zhihu.com）
+        if 'domain' in c:
+            domain = c['domain']
+            if not domain.startswith('.'):
+                c['domain'] = '.' + domain
         try:
             page.context.add_cookies([c])
         except Exception:

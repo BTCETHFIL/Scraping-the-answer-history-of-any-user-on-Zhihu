@@ -10,14 +10,13 @@
 - **三种登录方式** — 扫码登录 / 手动 Cookie / 复用 storage_state，灵活应对不同环境
 - **全量爬取** — 自动滚动加载用户的所有回答
 - **断点续传** — 进度记录到 `progress.json`，中断后从断点继续
-- **混合输出模式** — 每篇回答输出：内容区截图(问题+回答) + 可搜索 Markdown 文字 + Base64 内嵌图片 + 用户影响力数据
-- **法务证据模式** — 可选生成 `EVIDENCE_REPORT.md`，保存原始 HTML + SHA-256 文件哈希，满足电子证据固定需求
-- **增量更新** — 再次运行只抓新回答，不重复下载。INDEX.md 增量合并，EVIDENCE_REPORT.md 全量扫描
+- **混合输出模式** — 每篇回答输出：内容区截图(独立PNG) + 可搜索 Markdown 文字 + 用户影响力数据
+- **增量更新** — 再次运行只抓新回答，不重复下载。INDEX.md 增量合并
 - **短时缓存** — 30 分钟 TTL 双层缓存（链接列表 + 回答内容），二次运行间隔内跳过网络请求
 - **强制忽略缓存** — 测试用复选框，一键跳过所有缓存+进度，从头重爬
 - **多用户批量** — 支持一次配置多个用户，依次爬取
 - **系统 Chrome** — 支持配置已有 Chrome 路径，无需额外下载 Chromium
-- **测试模式** — 只爬取前 5 条，方便调试
+- **测试模式** — 只爬取前 3 条，方便调试
 
 ## 快速开始
 
@@ -74,9 +73,9 @@ output/
     │   ├── links.json          #   回答链接列表缓存
     │   └── {answer_id}.json    #   单条回答内容缓存
     ├── INDEX.md                # 回答索引（增量合并）
-    ├── EVIDENCE_REPORT.md      # 法务证据报告（含 SHA-256 哈希）
     ├── progress.json           # 断点续传进度
-    ├── 2024-01-15_如何评价XXX.md      # Markdown（截图 + 文字 + base64 图片 + 影响力数据）
+    ├── 2024-01-15_如何评价XXX.md      # Markdown（截图引用 + 文字 + 影响力数据）
+    ├── {answer_id}.png               # 独立截图文件（MD 中相对路径引用）
     ├── 2024-01-15_如何评价XXX.html    # 法务模式：原始 HTML 副本
     └── ...
 ```
@@ -87,11 +86,11 @@ output/
 |------|--------|------|
 | `targets` | `[]` | 目标用户 URL 或 ID 列表 |
 | `max_answers` | `0` | 每人最多爬取数，0 = 全部 |
-| `test_mode` | `false` | 测试模式：只爬前 5 条 |
+| `test_mode` | `false` | 测试模式：只爬前 3 条 |
 | `output_dir` | `output` | 输出根目录 |
 | `headless` | `false` | 无头模式（后台运行，不显示浏览器窗口） |
 | `chrome_exe` | `""` | 本地 Chrome 路径，留空则使用 Playwright 自带 Chromium |
-| `forensic_mode` | `true` | 法务证据模式：保存 HTML + 生成 EVIDENCE_REPORT.md |
+| `forensic_mode` | `true` | 法务证据模式：保存 HTML |
 | `save_html` | `false` | 单独保存原始 HTML（法务模式自动开启） |
 | `cache_ttl_minutes` | `30` | 短时缓存有效期（分钟），0 = 禁用 |
 | `force_no_cache` | `false` | 强制忽略所有缓存+进度，测试用 |

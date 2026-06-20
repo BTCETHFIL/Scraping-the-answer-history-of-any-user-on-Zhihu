@@ -5,7 +5,7 @@
 
 import json
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 
 
 @dataclass
@@ -16,7 +16,7 @@ class Config:
 
     # ── 爬取设置 ──
     max_answers: int = 0           # 每个用户最多爬取回答数，0=全部
-    test_mode: bool = False        # 测试模式：只爬5条用于快速验证
+    test_mode: bool = False        # 测试模式：只爬3条用于快速验证
     output_dir: str = "output"     # 输出根目录
 
     # ── 延迟策略（秒）──
@@ -54,8 +54,7 @@ class Config:
         cfg_path = Path(path)
         if cfg_path.exists():
             data = json.loads(cfg_path.read_text(encoding="utf-8"))
-            # 将 JSON 中存在的字段覆盖默认值
-            known = {f.name for f in cls.__dataclass_fields__.values()}
+            known = {f.name for f in fields(cls)}
             for k, v in data.items():
                 if k in known:
                     setattr(cfg, k, v)
@@ -63,8 +62,7 @@ class Config:
 
     def save(self, path: str = "config.json"):
         """保存当前配置到 JSON 文件"""
-        data = {f.name: getattr(self, f.name)
-                for f in self.__dataclass_fields__.values()}
+        data = {f.name: getattr(self, f.name) for f in fields(self)}
         Path(path).write_text(
             json.dumps(data, ensure_ascii=False, indent=2),
             encoding="utf-8"

@@ -6,9 +6,10 @@ import sys
 import os
 import io
 import json
+import re
 import threading
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext
+from tkinter import ttk, messagebox, scrolledtext, filedialog
 from pathlib import Path
 
 # 工作目录切到项目根
@@ -43,6 +44,75 @@ class LogRedirector(io.StringIO):
 # 主 GUI 类
 # ══════════════════════════════════════════════════════════
 
+def _split_large_md(filepath, max_mb=10, log=None):
+    """将过大的 .md 文件按 H2 标题边界分割，每个分块 < max_mb MB。"""
+    fp = Path(filepath) if not isinstance(filepath, Path) else filepath
+    if not fp.exists():
+        return False, 0
+    raw = fp.read_bytes()
+    if len(raw) <= max_mb * 1024 * 1024:
+        return False, 0
+    text = raw.decode('utf-8', errors='replace')
+    lines = text.split('\n')
+    h2_idx = [0]
+    for i, line in enumerate(lines):
+        if re.match(r'^##\s', line):
+            h2_idx.append(i)
+    h2_idx.append(len(lines))
+    sections = []
+    for j in range(len(h2_idx) - 1):
+        s, e = h2_idx[j], h2_idx[j + 1]
+        sections.append((s, e, '\n'.join(lines[s:e])))
+    max_bytes = max_mb * 1024 * 1024
+    chunks = []
+    cur_text = ''
+    cur_start = 0
+    for s, e, sec_text in sections:
+        sec_b = len(sec_text.encode('utf-8'))
+        if sec_b > max_bytes:
+            if cur_text:
+                chunks.append((cur_start, cur_text))
+                cur_text = ''
+            chunk_lines = []
+            cstart = s
+            for k in range(s, e):
+                lb = len((lines[k] + '\n').encode('utf-8'))
+                if chunk_lines and len('\n'.join(chunk_lines + [lines[k]]).encode('utf-8')) > max_bytes:
+                    chunks.append((cstart, '\n'.join(chunk_lines)))
+                    chunk_lines = [lines[k]]
+                    cstart = k
+                else:
+                    chunk_lines.append(lines[k])
+            if chunk_lines:
+                chunks.append((cstart, '\n'.join(chunk_lines)))
+            cur_start = e
+            continue
+        test = cur_text + '\n' + sec_text if cur_text else sec_text
+        if len(test.encode('utf-8')) > max_bytes and cur_text:
+            chunks.append((cur_start, cur_text))
+            cur_text = sec_text
+            cur_start = s
+        else:
+            cur_text = test
+            if cur_start == 0:
+                cur_start = s
+    if cur_text:
+        chunks.append((cur_start, cur_text))
+    if len(chunks) <= 1:
+        return False, 0
+    stem, ext = fp.stem, fp.suffix
+    for ci, (_, chunk_text) in enumerate(chunks, 1):
+        new_path = fp.parent / f'{stem}({ci}){ext}'
+        new_path.write_text(chunk_text + '\n' if not chunk_text.endswith('\n') else chunk_text, encoding='utf-8')
+        if log:
+            cmb = len(chunk_text.encode('utf-8')) / (1024 * 1024)
+            log(f"    → {new_path.name} ({cmb:.1f} MB)", 'info')
+    fp.unlink()
+    if log:
+        log(f"  ✂ 分割完成: {fp.name} → {len(chunks)} 个文件", 'info')
+    return True, len(chunks)
+
+
 class ZhihuCrawlerGUI:
     def __init__(self, root):
         self.root = root
@@ -51,6 +121,7 @@ class ZhihuCrawlerGUI:
         self.root.minsize(780, 580)
         self._running = False
         self._stop_flag = False
+        self._stop_event = threading.Event()
         self._crawler_thread = None
 
         # 加载配置
@@ -93,7 +164,7 @@ class ZhihuCrawlerGUI:
         add_row.pack(fill=tk.X, pady=(0, 4))
         self._quick_add_entry = ttk.Entry(add_row, width=30)
         self._quick_add_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self._quick_add_entry.insert(0, "输入URL或用户ID...")
+        self._quick_add_entry.insert(0, "输入用户主页URL或用户ID...")
         self._quick_add_entry.bind('<FocusIn>', self._on_quick_add_focus_in)
         self._quick_add_entry.bind('<FocusOut>', self._on_quick_add_focus_out)
         self._quick_add_entry.bind('<Return>', self._add_user_from_entry)
@@ -119,6 +190,7 @@ class ZhihuCrawlerGUI:
         ttk.Button(btn_row2, text="全选", command=self._select_all_users, width=6).pack(side=tk.LEFT, padx=(0, 4))
         ttk.Button(btn_row2, text="全不选", command=self._deselect_all_users, width=6).pack(side=tk.LEFT, padx=(0, 4))
         ttk.Button(btn_row2, text="✏ 编辑昵称", command=self._edit_nickname, width=10).pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Button(btn_row2, text="📋 复制链接", command=self._copy_user_link, width=10).pack(side=tk.LEFT, padx=(0, 4))
         ttk.Button(btn_row2, text="🗑 删除", command=self._delete_selected_users, width=8).pack(side=tk.LEFT, padx=(0, 4))
         ttk.Button(btn_row2, text="🔄 刷新列表", command=self._refresh_user_list, width=10).pack(side=tk.LEFT)
         self._list_status = ttk.Label(btn_row2, text="", foreground="gray")
@@ -170,7 +242,8 @@ class ZhihuCrawlerGUI:
         self._headless_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(row4, text="无头模式（后台运行）", variable=self._headless_var).pack(side=tk.LEFT)
         self._test_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(row4, text="🧪 测试模式（只爬5条）", variable=self._test_var).pack(side=tk.LEFT, padx=15)
+        ttk.Checkbutton(row4, text="🧪 测试模式（只爬3条）", variable=self._test_var,
+                        command=self._on_test_toggle).pack(side=tk.LEFT, padx=15)
 
         row5 = ttk.Frame(crawl_frame)
         row5.pack(fill=tk.X, pady=2)
@@ -227,6 +300,25 @@ class ZhihuCrawlerGUI:
         ttk.Checkbutton(row_d4, text="🔄 强制忽略缓存（测试用：跳过所有缓存+进度，从头重爬）",
                         variable=self._force_no_cache_var).pack(side=tk.LEFT)
 
+        # ── 手动链接保存 ──
+        manual_frame = ttk.LabelFrame(left_frame, text="🔗 手动链接保存为 MD（无需预配置用户ID · 每行一条 · 上限20条）", padding=6)
+        manual_frame.pack(fill=tk.X, pady=(6, 6))
+
+        self._manual_text = tk.Text(manual_frame, height=4, font=("Consolas", 9),
+                                     wrap=tk.WORD, fg="gray")
+        self._manual_text.insert("1.0", "粘贴知乎回答链接（支持App复制格式：文字+链接）...")
+        self._manual_text.bind('<FocusIn>', self._on_manual_focus_in)
+        self._manual_text.bind('<FocusOut>', self._on_manual_focus_out)
+        self._manual_text.pack(fill=tk.X)
+
+        manual_btn_row = ttk.Frame(manual_frame)
+        manual_btn_row.pack(fill=tk.X, pady=(4, 0))
+        self._manual_btn = ttk.Button(manual_btn_row, text="📝 批量保存为 MD",
+                                      command=self._save_manual_urls, width=16)
+        self._manual_btn.pack(side=tk.LEFT)
+        ttk.Label(manual_btn_row, text="支持: https://www.zhihu.com/question/xxx/answer/xxx",
+                  foreground="gray", font=("", 8)).pack(side=tk.LEFT, padx=8)
+
         # ── 操作控制 ──
         action_frame = ttk.LabelFrame(left_frame, text="操作", padding=6)
         action_frame.pack(fill=tk.X, pady=(8, 0))
@@ -268,6 +360,7 @@ class ZhihuCrawlerGUI:
         log_btn_row = ttk.Frame(right_frame)
         log_btn_row.pack(fill=tk.X, pady=(4, 0))
         ttk.Button(log_btn_row, text="清空日志", command=self._clear_log, width=10).pack(side=tk.RIGHT)
+        ttk.Button(log_btn_row, text="✂ 分割大MD", command=self._split_large_md_file, width=12).pack(side=tk.RIGHT, padx=(0, 6))
 
         # 关闭事件
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -297,13 +390,13 @@ class ZhihuCrawlerGUI:
         """刷新用户列表显示"""
         self._user_listbox.delete(0, tk.END)
         mgr = self._get_id_manager()
-        for nickname, user_id in mgr.get_display_list():
+        for nickname, user_id, url in mgr.get_display_list():
             history = mgr.get_crawl_history(user_id)
             hist_info = ""
             if history:
                 last = history[-1]
                 hist_info = f" | 最近: {last['date'][:16]}, {last['answers_scraped']}条"
-            self._user_listbox.insert(tk.END, f"{nickname}    ({user_id}){hist_info}")
+            self._user_listbox.insert(tk.END, f"{nickname}    ({user_id})    🔗 {url}{hist_info}")
         total = len(mgr.users)
         self._list_status.config(
             text=f"共 {total} 个用户"
@@ -312,7 +405,7 @@ class ZhihuCrawlerGUI:
     def _add_user_from_entry(self, event=None):
         """从快速添加输入框添加用户"""
         raw = self._quick_add_entry.get().strip()
-        if not raw or raw == "输入URL或用户ID...":
+        if not raw or raw == "输入用户主页URL或用户ID...":
             return
 
         try:
@@ -324,7 +417,8 @@ class ZhihuCrawlerGUI:
             return
 
         mgr = self._get_id_manager()
-        if mgr.add(user_id, nickname=user_id):
+        url = f"https://www.zhihu.com/people/{user_id}"
+        if mgr.add(user_id, nickname=user_id, url=url):
             self._quick_add_entry.delete(0, tk.END)
             self._refresh_user_list()
             # 自动选中新添加的
@@ -338,14 +432,202 @@ class ZhihuCrawlerGUI:
             messagebox.showinfo("已存在", f"用户 {user_id} 已在列表中")
 
     def _on_quick_add_focus_in(self, event):
-        if self._quick_add_entry.get() == "输入URL或用户ID...":
+        if self._quick_add_entry.get() == "输入用户主页URL或用户ID...":
             self._quick_add_entry.delete(0, tk.END)
             self._quick_add_entry.config(foreground="black")
 
     def _on_quick_add_focus_out(self, event):
         if not self._quick_add_entry.get().strip():
-            self._quick_add_entry.insert(0, "输入URL或用户ID...")
+            self._quick_add_entry.insert(0, "输入用户主页URL或用户ID...")
             self._quick_add_entry.config(foreground="gray")
+
+    def _on_manual_focus_in(self, event):
+        text = self._manual_text.get("1.0", tk.END).strip()
+        if text == "粘贴知乎回答链接（支持App复制格式：文字+链接）...":
+            self._manual_text.delete("1.0", tk.END)
+            self._manual_text.config(fg="black")
+
+    def _on_manual_focus_out(self, event):
+        if not self._manual_text.get("1.0", tk.END).strip():
+            self._manual_text.insert("1.0", "粘贴知乎回答链接（支持App复制格式：文字+链接）...")
+            self._manual_text.config(fg="gray")
+
+    MAX_MANUAL_URLS = 20
+
+    def _save_manual_urls(self, event=None):
+        """批量手动链接 → 保存为 MD"""
+        raw = self._manual_text.get("1.0", tk.END).strip()
+        if not raw or raw == "粘贴知乎回答链接（支持App复制格式：文字+链接）...":
+            messagebox.showwarning("提示", "请先粘贴知乎回答链接")
+            return
+
+        # 用正则从全部文本中提取知乎链接（兼容App复制的带文字格式）
+        urls = re.findall(r'https?://[^\s]*zhihu\.com[^\s]*', raw)
+        # 去重保持顺序
+        seen = set()
+        urls = [u for u in urls if not (u in seen or seen.add(u))]
+
+        if not urls:
+            messagebox.showwarning("提示", "请粘贴知乎回答链接（含 zhihu.com）")
+            return
+
+        if len(urls) > self.MAX_MANUAL_URLS:
+            urls = urls[:self.MAX_MANUAL_URLS]
+            self._manual_text.delete("1.0", tk.END)
+            self._manual_text.insert("1.0", "\n".join(urls))
+
+        if self._running:
+            messagebox.showwarning("提示", "已有爬取任务在运行中，请等待完成")
+            return
+
+        self._running = True
+        self._start_btn.config(state=tk.DISABLED)
+        self._manual_btn.config(state=tk.DISABLED)
+        self._progress_label.config(text=f"正在批量保存 ({len(urls)}条)...")
+
+        threading.Thread(
+            target=self._manual_urls_thread,
+            args=(urls,),
+            daemon=True
+        ).start()
+
+    def _manual_urls_thread(self, urls: list):
+        """后台线程：批量保存多条链接为 MD"""
+        import time as _time
+        from playwright.sync_api import sync_playwright
+        from auth import ensure_login, get_login_state_path
+        from crawler import crawl_single_url
+
+        original_stdout = sys.stdout
+        sys.stdout = LogRedirector(lambda m: self.root.after(0, self._log, m, 'info'))
+
+        success_count = 0
+        fail_count = 0
+
+        try:
+            total = len(urls)
+            self._log(f"\n🔗 批量保存 {total} 条链接", 'info')
+
+            with sync_playwright() as p:
+                launch_kwargs = {
+                    'headless': self._cfg.headless,
+                    'args': [
+                        '--disable-blink-features=AutomationControlled',
+                        '--no-sandbox',
+                        '--disable-dev-shm-usage',
+                    ]
+                }
+                if self._cfg.chrome_exe:
+                    launch_kwargs['executable_path'] = self._cfg.chrome_exe
+
+                browser = p.chromium.launch(**launch_kwargs)
+
+                state_path = get_login_state_path(self._cfg.browser_data_dir)
+                context_kwargs = {
+                    'viewport': {'width': 1920, 'height': 1080},
+                    'device_scale_factor': 2,
+                    'user_agent': (
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                        'AppleWebKit/537.36 (KHTML, like Gecko) '
+                        'Chrome/120.0.0.0 Safari/537.36'
+                    ),
+                    'locale': 'zh-CN',
+                }
+
+                if state_path.exists():
+                    try:
+                        context = browser.new_context(storage_state=str(state_path), **context_kwargs)
+                    except Exception:
+                        context = browser.new_context(**context_kwargs)
+                else:
+                    context = browser.new_context(**context_kwargs)
+
+                page = context.new_page()
+
+                # 确保登录（仅一次）
+                try:
+                    ensure_login(page, self._cfg)
+                except Exception as e:
+                    self._log(f"登录失败: {e}", 'error')
+                    browser.close()
+                    return
+
+                for i, url in enumerate(urls, 1):
+                    self._log(f"  [{i}/{total}] {url[:80]}...", 'info')
+                    result = crawl_single_url(page, url, output_dir=self._cfg.output_dir)
+                    if result['success']:
+                        self._log(f"    ✅ {result['md_path']}", 'success')
+                        success_count += 1
+                    else:
+                        self._log(f"    ❌ {result['error']}", 'error')
+                        fail_count += 1
+
+                browser.close()
+
+        except Exception as e:
+            self._log(f"致命错误: {e}", 'error')
+            import traceback
+            self._log(traceback.format_exc(), 'error')
+        finally:
+            sys.stdout = original_stdout
+            self._running = False
+            summary = f"✅ {success_count} 成功"
+            if fail_count:
+                summary += f" / ❌ {fail_count} 失败"
+            self._log(f"\n📊 批量保存完成: {summary}", 'info')
+            self.root.after(0, lambda: messagebox.showinfo("批量保存完成",
+                f"批量保存 {len(urls)} 条完成:\n{summary}"))
+            self.root.after(0, self._on_manual_done)
+
+    def _on_manual_done(self):
+        """手动保存完成后恢复 UI"""
+        self._start_btn.config(state=tk.NORMAL)
+        self._manual_btn.config(state=tk.NORMAL)
+        self._progress_label.config(text="就绪")
+
+    def _split_large_md_file(self):
+        """选择目录，扫描并分割 >10MB 的 .md 文件"""
+        d = filedialog.askdirectory(title="选择要扫描的 MD 文件目录",
+            initialdir=self._cfg.output_dir or os.path.join(os.path.dirname(__file__), "output"))
+        if not d:
+            return
+        big_files = []
+        for mf in sorted(Path(d).rglob('*.md')):
+            if not mf.is_file():
+                continue
+            sz = mf.stat().st_size
+            if sz > 10 * 1024 * 1024:
+                big_files.append((str(mf), sz))
+        if not big_files:
+            messagebox.showinfo("无需分割", "该目录下没有超过 10 MB 的 .md 文件。")
+            return
+        names = '\n'.join(f'  · {Path(f).name} ({s / 1024 / 1024:.1f} MB)' for f, s in big_files[:20])
+        if len(big_files) > 20:
+            names += f'\n  ... 共 {len(big_files)} 个'
+        ok = messagebox.askyesno(
+            "分割大文件",
+            f"检测到 {len(big_files)} 个 .md 文件超过 10 MB：\n\n"
+            f"{names}\n\n"
+            f"是否按 H2 标题自动分割为 <10 MB 的小文件？\n"
+            f"分割后编号保留，仅加 (1)(2)(3) 后缀。"
+        )
+        if not ok:
+            return
+        self._log("\n✂ 开始分割大文件...", 'info')
+
+        def worker():
+            count = 0
+            for fp, sz in big_files:
+                try:
+                    did, n = _split_large_md(fp, 10, lambda m, t='info': self.root.after(0, lambda: self._log(m, t)))
+                    if did:
+                        count += 1
+                except Exception as e:
+                    self.root.after(0, lambda e=e, fp=fp: self._log(f"  ✗ 分割失败 {Path(fp).name}: {e}", 'error'))
+            self.root.after(0, lambda: self._log(f"✂ 分割完成: {len(big_files)} 个大文件 → {count} 个已分割", 'info'))
+            self.root.after(0, lambda c=count: messagebox.showinfo("分割完成", f"已处理 {len(big_files)} 个大文件，\n{count} 个文件已被分割。"))
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _select_all_users(self):
         self._user_listbox.selection_set(0, tk.END)
@@ -369,6 +651,29 @@ class ZhihuCrawlerGUI:
                 mgr.remove(m.group(1))
         self._refresh_user_list()
         self._log(f"🗑 已删除 {len(selected)} 个用户", 'info')
+
+    def _copy_user_link(self):
+        """复制选中用户的页面链接到剪贴板"""
+        selected = self._user_listbox.curselection()
+        if not selected:
+            messagebox.showinfo("提示", "请先在列表中选中一个用户")
+            return
+        idx = selected[0]
+        item_text = self._user_listbox.get(idx)
+        import re as _re
+        m = _re.search(r'\(([^)]+)\)', item_text)
+        if not m:
+            return
+        user_id = m.group(1)
+        mgr = self._get_id_manager()
+        user = mgr.find(user_id)
+        if not user:
+            return
+        url = user.url or f"https://www.zhihu.com/people/{user_id}"
+        self.root.clipboard_clear()
+        self.root.clipboard_append(url)
+        self._list_status.config(text=f"已复制: {url}")
+        self._log(f"📋 已复制到剪贴板: {url}", 'info')
 
     def _edit_nickname(self, event=None):
         """编辑选中用户的昵称"""
@@ -481,6 +786,7 @@ class ZhihuCrawlerGUI:
         self._cache_ttl.delete(0, tk.END)
         self._cache_ttl.insert(0, str(self._cfg.cache_ttl_minutes))
         self._force_no_cache_var.set(self._cfg.force_no_cache)
+        self._on_test_toggle()  # 初始同步「最多爬取」输入框的启用状态
 
     def _read_config_from_ui(self):
         """从 UI 读取配置，更新 Config 对象"""
@@ -522,10 +828,18 @@ class ZhihuCrawlerGUI:
         self._cfg.save("config.json")
 
         # 同步到模块级 config 单例（爬虫线程读取此对象）
-        for f in self._cfg.__dataclass_fields__:
-            setattr(config, f, getattr(self._cfg, f))
+        from dataclasses import fields
+        for f in fields(self._cfg):
+            setattr(config, f.name, getattr(self._cfg, f.name))
 
     # ── 爬取控制 ────────────────────────────────────────
+
+    def _on_test_toggle(self):
+        """测试模式切换时联动「最多爬取」输入框"""
+        if self._test_var.get():
+            self._max_entry.config(state=tk.DISABLED)
+        else:
+            self._max_entry.config(state=tk.NORMAL)
 
     def _on_forensic_toggle(self):
         """法务模式切换时联动 save_html 复选框"""
@@ -605,12 +919,13 @@ class ZhihuCrawlerGUI:
         # ── 启动爬取 ──
         self._log(f"\n{'='*55}", 'dim')
         self._log(f"🎯 目标用户: {', '.join(user_ids)}", 'info')
-        self._log(f"📊 最多爬取: {'全部' if self._cfg.max_answers == 0 else self._cfg.max_answers} 条/人", 'info')
+        if self._cfg.test_mode:
+            self._log(f"🧪 测试模式: 开启（只爬3条）", 'info')
+        else:
+            self._log(f"📊 最多爬取: {'全部' if self._cfg.max_answers == 0 else self._cfg.max_answers} 条/人", 'info')
         self._log(f"🎯 输出模式: 混合模式（截图 + 文字 + base64图片嵌入）", 'info')
         self._log(f"👁 无头模式: {'是' if self._cfg.headless else '否'}", 'info')
         self._log(f"🔒 法务证据模式: {'是（HTML + 证据报告 + SHA256）' if self._cfg.forensic_mode else '否'}", 'info')
-        if self._cfg.test_mode:
-            self._log(f"🧪 测试模式: 开启（最多5条）", 'info')
         if self._cfg.force_no_cache:
             self._log(f"🔄 强制忽略缓存: 开启（跳过所有缓存+进度）", 'info')
         self._log(f"{'='*55}\n", 'dim')
@@ -622,6 +937,7 @@ class ZhihuCrawlerGUI:
         # 状态切换
         self._running = True
         self._stop_flag = False
+        self._stop_event.clear()
         self._start_btn.config(state=tk.DISABLED)
         self._stop_btn.config(state=tk.NORMAL)
         self._progress['value'] = 0
@@ -639,6 +955,7 @@ class ZhihuCrawlerGUI:
         if not self._running:
             return
         self._stop_flag = True
+        self._stop_event.set()
         self._log("\n⚠ 正在停止...（请等待当前页面处理完成）", 'warn')
         self._stop_btn.config(state=tk.DISABLED)
 
@@ -661,6 +978,7 @@ class ZhihuCrawlerGUI:
                         '--disable-blink-features=AutomationControlled',
                         '--no-sandbox',
                         '--disable-dev-shm-usage',
+                        '--start-maximized',
                     ]
                 }
                 if self._cfg.chrome_exe:
@@ -670,7 +988,8 @@ class ZhihuCrawlerGUI:
 
                 state_path = get_login_state_path(self._cfg.browser_data_dir)
                 context_kwargs = {
-                    'viewport': {'width': 1280, 'height': 800},
+                    'viewport': {'width': 1920, 'height': 1080},
+                    'device_scale_factor': 2,
                     'user_agent': (
                         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
                         'AppleWebKit/537.36 (KHTML, like Gecko) '
@@ -713,7 +1032,8 @@ class ZhihuCrawlerGUI:
                         text=f"正在爬取: {u}"))
                     try:
                         force_ids = force_recrawl_map.get(uid, set())
-                        r = crawl_user_answers(page, uid, force_recrawl_ids=force_ids)
+                        r = crawl_user_answers(page, uid, force_recrawl_ids=force_ids,
+                                               stop_event=self._stop_event)
                         results.append(r)
                         # 记录爬取历史
                         from id_manager import get_id_manager
@@ -721,7 +1041,7 @@ class ZhihuCrawlerGUI:
                         mgr.add_crawl_record(
                             uid,
                             r.get('success', 0),
-                            str(Path(self._cfg.output_dir) / uid)
+                            r.get('output_dir', str(Path(self._cfg.output_dir) / uid))
                         )
                     except Exception as e:
                         self.root.after(0, self._log, f"爬取 {uid} 失败: {e}", 'error')
@@ -769,6 +1089,7 @@ class ZhihuCrawlerGUI:
             if not messagebox.askokcancel("退出", "爬取正在进行中，确定退出吗？"):
                 return
             self._stop_flag = True
+            self._stop_event.set()
         self.root.destroy()
 
 

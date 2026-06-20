@@ -4,6 +4,7 @@
   python main.py                          # 从 config.json 读取配置运行
   python main.py <用户ID>                 # 爬取指定用户
   python main.py <用户ID1> <用户ID2> ...  # 批量爬取
+  python main.py --url <回答链接>          # 手动保存单条回答为 MD（无需配置用户ID）
   python main.py --config                 # 生成默认 config.json
   python main.py --help                   # 查看帮助
 """
@@ -39,12 +40,16 @@ def print_help():
     print("  python main.py                       从 config.json 读取配置运行")
     print("  python main.py <用户ID>              爬取指定用户")
     print("  python main.py <ID1> <ID2> ...       批量爬取")
+    print("  python main.py --url <回答链接>       手动保存单条回答为MD（无需配置用户ID）")
     print("  python main.py --config              生成默认 config.json")
     print("  python main.py --help                查看帮助\n")
     print("支持的用户标识格式:")
     print("  · 纯用户ID:         zhang-jia-wei")
     print("  · 完整主页链接:      https://www.zhihu.com/people/zhang-jia-wei")
     print("  · 回答页链接:        https://www.zhihu.com/people/zhang-jia-wei/answers\n")
+    print("手动链接保存 (--url):")
+    print("  python main.py --url https://www.zhihu.com/question/12345/answer/67890")
+    print("  支持任何公开的知乎回答链接，无需预配置用户ID，直接保存为MD\n")
     print("配置文件说明:")
     print("  config.json 中的 targets 字段填写要爬取的用户列表")
     print("  max_answers: 0 表示爬取全部，设为数字则限制条数")
@@ -66,6 +71,73 @@ def main():
         config.save("config.json")
         print("✅ 已生成默认配置文件 config.json")
         print("   请编辑该文件，填写 targets 字段后运行 python main.py")
+        return
+
+    # ── 手动链接模式: --url <回答链接> ──
+    if '--url' in sys.argv:
+        url_idx = sys.argv.index('--url')
+        if url_idx + 1 >= len(sys.argv):
+            print("❌ 请提供知乎回答链接: python main.py --url <链接>")
+            return
+        url = sys.argv[url_idx + 1]
+        if 'zhihu.com' not in url:
+            print("❌ 请提供有效的知乎回答链接（zhihu.com）")
+            return
+
+        from playwright.sync_api import sync_playwright
+        from auth import ensure_login, get_login_state_path
+        from crawler import crawl_single_url
+
+        print(f"🔗 手动链接模式: {url}")
+        with sync_playwright() as p:
+            launch_kwargs = {
+                'headless': config.headless,
+                'args': [
+                    '--disable-blink-features=AutomationControlled',
+                    '--no-sandbox',
+                    '--disable-dev-shm-usage',
+                ]
+            }
+            if config.chrome_exe:
+                launch_kwargs['executable_path'] = config.chrome_exe
+
+            browser = p.chromium.launch(**launch_kwargs)
+            state_path = get_login_state_path(config.browser_data_dir)
+            context_kwargs = {
+                'viewport': {'width': 1920, 'height': 1080},
+                'device_scale_factor': 2,
+                'user_agent': (
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                    'AppleWebKit/537.36 (KHTML, like Gecko) '
+                    'Chrome/120.0.0.0 Safari/537.36'
+                ),
+                'locale': 'zh-CN',
+            }
+
+            if state_path.exists():
+                try:
+                    context = browser.new_context(storage_state=str(state_path), **context_kwargs)
+                except Exception:
+                    context = browser.new_context(**context_kwargs)
+            else:
+                context = browser.new_context(**context_kwargs)
+
+            page = context.new_page()
+
+            try:
+                ensure_login(page, config)
+            except Exception as e:
+                print(f"❌ 登录失败: {e}")
+                browser.close()
+                return
+
+            result = crawl_single_url(page, url, output_dir=config.output_dir)
+            if result['success']:
+                print(f"✅ 已保存: {result['md_path']}")
+            else:
+                print(f"❌ 保存失败: {result['error']}")
+
+            browser.close()
         return
 
     # 确定目标用户列表
@@ -112,6 +184,7 @@ def main():
                 '--disable-blink-features=AutomationControlled',
                 '--no-sandbox',
                 '--disable-dev-shm-usage',
+                '--start-maximized',
             ]
         }
         if config.chrome_exe:
@@ -122,7 +195,8 @@ def main():
         # 尝试复用登录状态
         state_path = get_login_state_path(config.browser_data_dir)
         context_kwargs = {
-            'viewport': {'width': 1280, 'height': 800},
+            'viewport': {'width': 1920, 'height': 1080},
+            'device_scale_factor': 2,
             'user_agent': (
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
                 'AppleWebKit/537.36 (KHTML, like Gecko) '
@@ -163,6 +237,8 @@ def main():
                 print(f"❌ 爬取 {uid} 失败: {e}")
                 import traceback
                 traceback.print_exc()
+                import traceback
+                traceback.print_exc()
 
         # 汇总
         print("\n" + "=" * 60)
@@ -183,7 +259,7 @@ def main():
             mgr.add_crawl_record(
                 r['user_id'],
                 r.get('success', 0),
-                str(Path(config.output_dir) / r['user_id'])
+                r.get('output_dir', str(Path(config.output_dir) / r['user_id']))
             )
 
         browser.close()

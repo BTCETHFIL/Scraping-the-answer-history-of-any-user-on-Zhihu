@@ -187,7 +187,7 @@ def _discover_files_from_disk(output_dir: Path, answer_ids: set) -> dict:
 
 
 def save_progress(output_dir: Path, completed: set,
-                  file_map: dict = None, total_scraped: int = 0):
+                  file_map: dict = None):
     """
     保存爬取进度
     file_map: {answer_id: filename} 可选的文件名映射
@@ -444,6 +444,7 @@ def save_evidence_report(output_dir: Path, user_id: str,
     lines.append(f"| 获得赞同 | {user_profile.get('upvotes_received', 0):,} |")
     lines.append(f"| 获得喜欢 | {user_profile.get('likes_received', 0):,} |")
     lines.append(f"| 被收藏 | {user_profile.get('collections', 0):,} |")
+    lines.append(f"| 公共编辑 | {user_profile.get('public_edits', 0):,} |")
     lines.append(f"| 回答数 | {user_profile.get('answers_count', 0):,} |")
     lines.append(f"| 文章数 | {user_profile.get('articles_count', 0):,} |")
     bio = user_profile.get('bio', '')
