@@ -173,6 +173,7 @@ class ZhihuCrawlerGUI:
         self._stop_flag = False
         self._stop_event = threading.Event()
         self._crawler_thread = None
+        self._resume_state = None  # 断点续传状态: {user_ids, keyword, force_recrawl_map}
         self._raw_z_c0 = ""  # 完整cookie值（Entry显示掩码）
 
         # 加载配置
@@ -501,6 +502,10 @@ class ZhihuCrawlerGUI:
                                      command=self._stop_crawl, state=tk.DISABLED, width=10)
         self._stop_btn.pack(side=tk.RIGHT, padx=(4, 0))
         ToolTip(self._stop_btn, "停止正在进行的爬取任务\n已爬取的数据不会丢失\n请等待当前页面处理完成")
+        self._resume_btn = ttk.Button(ctrl_row, text="▶ 继续",
+                                       command=self._resume_crawl, state=tk.DISABLED, width=8)
+        self._resume_btn.pack(side=tk.RIGHT, padx=(4, 0))
+        ToolTip(self._resume_btn, "从上次停止位置断点续传\n继续爬取未完成的用户")
         self._start_btn = ttk.Button(ctrl_row, text="▶ 开始爬取",
                                       command=self._start_crawl, width=14)
         self._start_btn.pack(side=tk.RIGHT)
@@ -765,6 +770,7 @@ class ZhihuCrawlerGUI:
 
         self._running = True
         self._start_btn.config(state=tk.DISABLED)
+        self._resume_btn.config(state=tk.DISABLED)
         self._manual_btn.config(state=tk.DISABLED)
         self._import_btn.config(state=tk.DISABLED)
         self._progress_label.config(text=f"正在批量保存 ({len(urls)}条)...")
@@ -891,6 +897,7 @@ class ZhihuCrawlerGUI:
         self._start_btn.config(state=tk.NORMAL)
         self._manual_btn.config(state=tk.NORMAL)
         self._import_btn.config(state=tk.NORMAL)
+        self._resume_btn.config(state=tk.DISABLED)
         self._progress_label.config(text="就绪")
         # 自动刷新已抓取用户列表
         self._refresh_crawled_users_report(silent=True)
@@ -1712,6 +1719,9 @@ class ZhihuCrawlerGUI:
             self._log("⚠ 用户取消爬取", "warn")
             return
 
+        # 清空旧断点状态
+        self._resume_state = None
+
         # ── 启动爬取 ──
         self._log(f"\n{'='*55}", 'dim')
         self._log(f"🎯 目标用户: {', '.join(user_ids)}", 'info')
@@ -1741,6 +1751,7 @@ class ZhihuCrawlerGUI:
         self._stop_flag = False
         self._stop_event.clear()
         self._start_btn.config(state=tk.DISABLED)
+        self._resume_btn.config(state=tk.DISABLED)
         self._stop_btn.config(state=tk.NORMAL)
         self._progress['value'] = 0
         self._progress_label.config(text="正在启动浏览器...")
@@ -1760,6 +1771,56 @@ class ZhihuCrawlerGUI:
         self._stop_event.set()
         self._log("\n⚠ 正在停止...（请等待当前页面处理完成）", 'warn')
         self._stop_btn.config(state=tk.DISABLED)
+
+    def _resume_crawl(self):
+        """断点续传：从上次停止位置继续爬取"""
+        if not self._resume_state or not self._resume_state.get('user_ids'):
+            messagebox.showwarning("提示", "没有可继续的断点")
+            return
+        if self._running:
+            messagebox.showwarning("提示", "已有爬取任务在运行中")
+            return
+
+        state = self._resume_state
+        remaining = state['user_ids']
+        keyword = state.get('keyword', '')
+        force_recrawl_map = state.get('force_recrawl_map', {})
+
+        # 确认弹窗
+        from crawler import _split_keywords
+        kws = _split_keywords(keyword)
+        filter_info = f"🔍 关键词筛选：{len(kws)}个 → {', '.join(kws[:8])}"
+        if not keyword:
+            filter_info = "⚠ 未设置关键词，将抓取全部回答（无筛选）"
+        confirm_msg = (
+            f"确认断点续传？\n\n"
+            f"👤 剩余用户: {len(remaining)}人\n"
+            f"{filter_info}"
+        )
+        if not messagebox.askyesno("确认断点续传", confirm_msg, parent=self.root):
+            self._log("⚠ 用户取消断点续传", "warn")
+            return
+
+        self._log(f"\n{'='*55}", 'dim')
+        self._log(f"🔄 断点续传: 剩余 {len(remaining)} 人", 'info')
+        self._log(f"{'='*55}\n", 'dim')
+
+        # 状态切换
+        self._running = True
+        self._stop_flag = False
+        self._stop_event.clear()
+        self._start_btn.config(state=tk.DISABLED)
+        self._resume_btn.config(state=tk.DISABLED)
+        self._stop_btn.config(state=tk.NORMAL)
+        self._progress['value'] = 0
+        self._progress_label.config(text=f"继续爬取 ({len(remaining)} 人)...")
+
+        self._crawler_thread = threading.Thread(
+            target=self._crawl_thread,
+            args=(list(remaining), force_recrawl_map, keyword),
+            daemon=True
+        )
+        self._crawler_thread.start()
 
     def _crawl_thread(self, user_ids: list, force_recrawl_map: dict = None,
                       keyword: str = ""):
@@ -1829,7 +1890,14 @@ class ZhihuCrawlerGUI:
                 force_recrawl_map = force_recrawl_map or {}
                 for i, uid in enumerate(user_ids):
                     if self._stop_flag:
-                        self._log("⚠ 用户手动停止", 'warn')
+                        # 保存断点：剩余未处理的用户
+                        remaining = user_ids[i:]
+                        self._resume_state = {
+                            'user_ids': remaining,
+                            'keyword': keyword,
+                            'force_recrawl_map': force_recrawl_map
+                        }
+                        self._log(f"⚠ 用户手动停止（剩余 {len(remaining)} 人可断点续传）", 'warn')
                         break
                     self.root.after(0, lambda u=uid: self._progress_label.config(
                         text=f"正在爬取: {u}"))
@@ -1884,8 +1952,15 @@ class ZhihuCrawlerGUI:
         """爬取完成后的 UI 恢复"""
         self._start_btn.config(state=tk.NORMAL)
         self._stop_btn.config(state=tk.DISABLED)
-        self._progress['value'] = 100
-        self._progress_label.config(text="完成")
+        # 有断点状态时启用「继续」按钮
+        if self._resume_state and self._resume_state.get('user_ids'):
+            self._resume_btn.config(state=tk.NORMAL)
+            self._progress_label.config(text=f"已停止 — 剩余 {len(self._resume_state['user_ids'])} 人可继续")
+        else:
+            self._resume_btn.config(state=tk.DISABLED)
+            self._progress['value'] = 100
+            self._progress_label.config(text="完成")
+            self._resume_state = None  # 全部完成，清除断点
         self._running = False
         # 自动刷新已抓取用户列表
         self._refresh_crawled_users_report(silent=True)
