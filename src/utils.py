@@ -91,19 +91,8 @@ def format_datetime(iso_str: str) -> str:
     return m.group(1) if m else iso_str[:10]
 
 
-def format_datetime_full(iso_str: str) -> str:
-    """将 ISO 时间格式化为 YYYY-MM-DD HH:MM:SS（用于元数据显示）"""
-    if not iso_str:
-        return ""
-    # 尝试匹配完整时间
-    m = re.match(r'(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(:\d{2})?)', iso_str)
-    if m:
-        return f"{m.group(1)} {m.group(2)}"
-    # 只有日期
-    m = re.match(r'(\d{4}-\d{2}-\d{2})', iso_str)
-    if m:
-        return m.group(1)
-    return iso_str[:19] if len(iso_str) >= 19 else iso_str[:10]
+
+
 
 
 def extract_date_from_html(html_or_soup) -> str:

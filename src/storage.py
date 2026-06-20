@@ -238,47 +238,8 @@ def check_missing_files(output_dir: Path) -> tuple[set, set, dict]:
     return existing, missing, missing_details
 
 
-def save_index(output_dir: Path, answers_meta: list):
-    """生成回答索引文件（增量合并：保留历史条目 + 新条目）"""
-    index_path = output_dir / "INDEX.md"
 
-    # 解析已有索引条目（按文件名去重）
-    existing_fnames = set()
-    existing_lines = []
-    idx_pattern = re.compile(
-        r'^-\s*\[([^\]]*)\]\s*\[([^\]]*)\]\(([^)]+)\)\s*—\s*👍\s*(\d+)(.*)$'
-    )
 
-    if index_path.exists():
-        for line in index_path.read_text(encoding='utf-8').split('\n'):
-            m = idx_pattern.match(line.strip())
-            if m:
-                fname = m.group(3)
-                existing_fnames.add(fname)
-                existing_lines.append(line.strip())
-
-    # 生成新条目（跳过已存在的文件名）
-    new_lines = []
-    for meta in answers_meta:
-        fname = _filename(meta)
-        if fname in existing_fnames:
-            continue
-        existing_fnames.add(fname)
-        date = format_datetime(meta.get('date', ''))
-        title = meta.get('title', '未命名')
-        upvotes = meta.get('upvotes', 0)
-        comment_count = meta.get('comment_count', 0)
-
-        idx_line = f"- [{date}] [{title}]({fname}) — 👍 {upvotes}"
-        if comment_count:
-            idx_line += f" / 💬 {comment_count}"
-        new_lines.append(idx_line)
-
-    all_lines = existing_lines + new_lines
-    total = len(all_lines)
-
-    header = [f"# 回答索引\n\n共 {total} 条回答\n"]
-    index_path.write_text('\n'.join(header + all_lines), encoding='utf-8')
 
 
 # ── 短时缓存：避免短时间内重复网络请求 ──

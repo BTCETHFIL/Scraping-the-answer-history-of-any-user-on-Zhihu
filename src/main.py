@@ -241,8 +241,6 @@ def main():
                 print(f"❌ 爬取 {uid} 失败: {e}")
                 import traceback
                 traceback.print_exc()
-                import traceback
-                traceback.print_exc()
 
         # 汇总
         print("\n" + "=" * 60)
