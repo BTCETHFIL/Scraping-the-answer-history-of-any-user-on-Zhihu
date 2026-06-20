@@ -17,6 +17,7 @@ from config import config
 from converter import html_to_md, extract_answer_meta
 from storage import (
     save_answer, save_progress, load_progress,
+    load_progress_full, get_group_summary,
     embed_images_base64,
     check_missing_files,
     load_links_cache, save_links_cache,
@@ -52,11 +53,31 @@ def _split_keywords(keyword_str: str) -> list:
 
 
 def _any_keyword_matches(text: str, keywords: list) -> bool:
-    """不区分大小写检查文本是否匹配任一关键词。keywords 为空时返回 True（全部通过）。"""
+    """检查文本是否精确匹配任一关键词（英文字母不区分大小写）。
+    
+    匹配规则：
+    - 纯英文关键词（如 ES、NIO）：前后须为非字母数字或字符串边界，
+      避免 "test" 误匹配 "ES"，同时兼容中文上下文（如 "蔚来ES" 中 "ES" 前为中文）。
+    - 含中文/混合关键词（如 蔚来、ES6）：大小写不敏感子串匹配
+    - keywords 为空时返回 True（全部通过）
+    """
     if not keywords:
         return True
-    text_lower = text.lower()
-    return any(kw.lower() in text_lower for kw in keywords)
+    import re as _re
+    for kw in keywords:
+        if kw.isascii() and kw.isalpha():
+            # 纯英文：前后边界 = 非字母数字 或 字符串首尾
+            # 不使用 \\b（Python中中文也是\\w，\\b在"蔚来ES"中不匹配），
+            # 改用 (?<![a-zA-Z0-9])...(?![a-zA-Z0-9]) 实现跨语言精确边界
+            escaped = _re.escape(kw)
+            pattern = r'(?<![a-zA-Z0-9])' + escaped + r'(?![a-zA-Z0-9])'
+            if _re.search(pattern, text, _re.IGNORECASE):
+                return True
+        else:
+            # 含中文或混合：子串匹配
+            if kw.lower() in text.lower():
+                return True
+    return False
 
 
 def collect_answer_links(page: Page, user_id: str, max_answers: int = 0,
@@ -70,31 +91,515 @@ def collect_answer_links(page: Page, user_id: str, max_answers: int = 0,
         keyword_min_match: 标题匹配至少达到此数量后停止收集（0=不提前终止）
                           测试模式+关键词时设为 3，避免收集全部链接
 
-    返回 [{title, url, answer_id, preview_html, upvotes, date}, ...]
+    返回 [{title, url, answer_id, preview_text, upvotes, date, comment_count}, ...]
     """
     answers_url = f"https://www.zhihu.com/people/{user_id}/answers"
     log_print(f"\n📋 正在加载回答列表: {answers_url}")
 
-    # 解析关键词列表
-    kws = _split_keywords(keyword) if keyword and keyword_min_match > 0 else []
-
-    # 生成关键词哈希（用于区分不同关键词配置的缓存）
-    import hashlib
-    kw_hash = hashlib.md5(keyword.encode('utf-8')).hexdigest()[:8] if keyword else ""
-
-    # 短时缓存检查：先看是否有未过期的链接缓存
-    # 注意：有关键词提前终止时跳过缓存（缓存可能包含全部链接，需要重新收集以分批处理）
+    # 永久缓存检查（用户级并集，跨关键词共享）
     from utils import get_output_path
-    if not kws:
-        cached = load_links_cache(get_output_path(config.output_dir, user_id), user_id, keyword_hash=kw_hash)
-        if cached:
+    cached, cache_meta = load_links_cache(get_output_path(config.output_dir, user_id), user_id)
+
+    # 缓存兼容性：有关键词时，旧缓存可能不含 preview_text，需重新收集
+    cache_usable = False
+    if cached:
+        if keyword:
+            # 检查缓存是否含 preview_text（旧缓存兼容）
+            if all('preview_text' in item for item in cached):
+                cache_usable = True
+                log_print(f"✅ 使用缓存链接: {len(cached)} 条（并集缓存，跨关键词共享）")
+            else:
+                log_print(f"⚠ 旧缓存不含 preview_text，将重新收集以支持关键词过滤")
+                # 删除不兼容的旧缓存文件
+                try:
+                    from storage import _links_cache_key as _lck
+                    old_cache = _lck(get_output_path(config.output_dir, user_id), user_id)
+                    if old_cache.exists():
+                        old_cache.unlink()
+                        log_print(f"  🗑 已清理不兼容的旧缓存: {old_cache.name}")
+                except Exception:
+                    pass
+        else:
+            cache_usable = True
+
+    # 无关键词且缓存可用 → 尝试增量收集新回答
+    if cache_usable and not keyword:
+        existing_ids = set(item['answer_id'] for item in cached)
+        page.goto(answers_url, wait_until="domcontentloaded")
+        time.sleep(3)
+
+        new_items = []
+        seen_ids = set()
+        scroll_attempts = 0
+        max_scroll_attempts = 50  # 增量模式：通常只需少量滚动即可追上已缓存
+        no_new_count = 0
+        consecutive_cached = 0
+        incremental_stop = False
+
+        log_print(f"🔍 增量模式：已有 {len(cached)} 条缓存，查找新回答...")
+
+        while scroll_attempts < max_scroll_attempts and not incremental_stop:
+            if _is_stopped(stop_event):
+                log_print("\n  ⚠ 用户手动停止（增量收集阶段）")
+                break
+
+            cards = page.query_selector_all('[itemprop="zhihu:answer"], '
+                                             '.List-item, '
+                                             '[class*="AnswerItem"], '
+                                             '.ContentItem')
+
+            new_found_this_round = 0
+            for card in cards:
+                try:
+                    link_el = card.query_selector(
+                        'a[data-za-detail-view-element_name="Title"], '
+                        '.ContentItem-title a, '
+                        '.QuestionItem-title a, '
+                        'h2 a, '
+                        '[class*="question_link"]'
+                    )
+                    if not link_el:
+                        all_links = card.query_selector_all('a[href*="/answer/"]')
+                        for a in all_links:
+                            href = a.get_attribute('href') or ''
+                            if '/answer/' in href:
+                                link_el = a
+                                break
+                    if not link_el:
+                        continue
+
+                    href = link_el.get_attribute('href') or ''
+                    m = re.search(r'/answer/(\d+)', href)
+                    if not m:
+                        continue
+                    answer_id = m.group(1)
+
+                    # 命中已缓存 ID → 连续计数
+                    if answer_id in existing_ids:
+                        consecutive_cached += 1
+                        if consecutive_cached >= 10:
+                            incremental_stop = True
+                            break
+                        continue
+                    consecutive_cached = 0  # 遇到新 ID，重置
+
+                    if answer_id in seen_ids:
+                        continue
+                    seen_ids.add(answer_id)
+
+                    # 提取完整信息（复用原提取逻辑）
+                    title = link_el.inner_text().strip()
+                    full_url = urljoin(page.url, href)
+
+                    upvotes = 0
+                    vote_el = card.query_selector(
+                        '[class*="VoteButton--up"], '
+                        '[class*="votecount"], '
+                        'button[aria-label*="赞同"]'
+                    )
+                    if vote_el:
+                        vt = vote_el.inner_text().strip() or '0'
+                        vt = vt.replace(',', '')
+                        m_v = re.search(r'[\d.万]+', vt)
+                        if m_v:
+                            vs = m_v.group()
+                            if '万' in vs:
+                                upvotes = int(float(vs.replace('万', '')) * 10000)
+                            else:
+                                upvotes = int(float(vs))
+
+                    date = ''
+                    try:
+                        card_html = card.evaluate('el => el.outerHTML')
+                        date = extract_date_from_html(card_html)
+                    except Exception:
+                        pass
+
+                    comment_count = 0
+                    try:
+                        comment_el = card.query_selector('[class*="CommentButton"]')
+                        if not comment_el:
+                            for btn in card.query_selector_all('button'):
+                                try:
+                                    if btn.is_visible() and '评论' in (btn.inner_text() or ''):
+                                        comment_el = btn
+                                        break
+                                except Exception:
+                                    pass
+                        if comment_el:
+                            ct = comment_el.inner_text().strip() or '0'
+                            m_c = re.search(r'[\d,.万]+', ct)
+                            if m_c:
+                                v = m_c.group().replace(',', '')
+                                if '万' in v:
+                                    comment_count = int(float(v.replace('万', '')) * 10000)
+                                else:
+                                    comment_count = int(float(v))
+                    except Exception:
+                        pass
+
+                    preview_text = ''
+                    try:
+                        content_el = (
+                            card.query_selector('.RichContent-inner') or
+                            card.query_selector('[itemprop="text"]') or
+                            card.query_selector('[class*="RichContent"]')
+                        )
+                        if content_el:
+                            preview_text = content_el.inner_text().strip()
+                    except Exception:
+                        pass
+
+                    new_items.append({
+                        'title': title,
+                        'url': full_url,
+                        'answer_id': answer_id,
+                        'upvotes': upvotes,
+                        'date': date,
+                        'comment_count': comment_count,
+                        'preview_text': preview_text,
+                    })
+                    new_found_this_round += 1
+                except Exception:
+                    continue
+
+            if incremental_stop:
+                break
+
+            if new_found_this_round == 0:
+                no_new_count += 1
+                if no_new_count >= 3:
+                    log_print("  ℹ 连续 3 次未发现新内容，已到达列表末尾")
+                    break
+            else:
+                no_new_count = 0
+
+            random_delay(
+                config.scroll_delay_min,
+                config.scroll_delay_max,
+                f"增量滚动 (第{scroll_attempts + 1}次)",
+                stop_check=lambda: _is_stopped(stop_event) if stop_event else False
+            )
+            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            time.sleep(1)
+            try:
+                load_more = page.locator(
+                    'button:has-text("加载更多"), '
+                    '[class*="PaginationButton"], '
+                    '.List-footer button'
+                ).first
+                if load_more.count() > 0 and load_more.is_visible():
+                    load_more.click()
+                    time.sleep(1)
+            except Exception:
+                pass
+            scroll_attempts += 1
+
+        if new_items:
+            # 新回答在前，旧缓存在后（知乎按最新排序）
+            merged = new_items + cached
+            if max_answers > 0 and len(merged) > max_answers:
+                merged = merged[:max_answers]
+            log_print(f"🆕 增量 {len(new_items)} 条 + 缓存 {len(cached)} 条 → 合并 {len(merged)} 条")
+            # 时间校验：上次收集时间 vs 本次
+            last_at = cache_meta.get('collected_at_iso', '未知')
+            now_str = time.strftime('%Y-%m-%d %H:%M:%S')
+            log_print(f"  ⌚ 上次完整收集: {last_at}，本次增量: {now_str}")
+            # 跨日期警告
+            if cache_meta.get('collected_at'):
+                days_gap = (time.time() - cache_meta['collected_at']) / 86400
+                if days_gap > 1:
+                    log_print(f"  ⚠ 距上次收集已 {days_gap:.0f} 天，增量可能漏爬（建议定期全量收集校验）")
+            save_links_cache(get_output_path(config.output_dir, user_id), user_id, merged)
+            return merged
+        else:
+            log_print(f"✅ 无新回答，完全使用缓存: {len(cached)} 条")
+            if cache_meta.get('collected_at_iso'):
+                log_print(f"  ⌚ 缓存收集时间: {cache_meta['collected_at_iso']}")
             if max_answers > 0 and len(cached) > max_answers:
                 cached = cached[:max_answers]
-            log_print(f"✅ 使用缓存链接: {len(cached)} 条")
             return cached
 
+
+    # 有关键词且缓存可用 → 并集缓存模式
+    if cache_usable and keyword:
+        keywords = _split_keywords(keyword)
+        
+        # ── 保存并集全量引用（用于增量重叠检测）──
+        full_cached = list(cached)  # 并集缓存：所有历史关键词匹配的合集
+        full_cached_ids = set(item['answer_id'] for item in full_cached)
+        
+        # ── 内存重过滤：从并集缓存中筛出匹配当前关键词的 ──
+        filtered_cached = []
+        for item in cached:
+            if _any_keyword_matches(item.get('title', ''), keywords) or \
+               _any_keyword_matches(item.get('preview_text', ''), keywords):
+                filtered_cached.append(item)
+        if len(filtered_cached) < len(cached):
+            log_print(f"🔍 关键词重过滤：并集缓存 {len(cached)} → {len(filtered_cached)} 条"
+                      f"（匹配「{' / '.join(keywords)}」）")
+
+        # ── 缓存鲜度检查：新鲜缓存直接返回，跳过滚屏 ──
+        cache_age_hours = 0.0
+        if cache_meta.get('collected_at'):
+            cache_age_hours = (time.time() - cache_meta['collected_at']) / 3600.0
+        max_age = getattr(config, 'links_cache_max_age_hours', 72)
+        cache_collected_str = cache_meta.get('collected_at_iso', '未知')
+
+        if max_age > 0 and cache_age_hours <= max_age:
+            # 缓存新鲜，跳过滚屏 → 纯内存操作，秒级完成
+            log_print(f"⚡ 缓存新鲜（{cache_age_hours:.0f}小时前 / {cache_collected_str}），"
+                      f"跳过滚屏，直接内存重过滤")
+            log_print(f"   匹配: {len(filtered_cached)} 条（并集{len(full_cached)}条，阈值≤{max_age}小时）")
+            if max_answers > 0 and len(filtered_cached) > max_answers:
+                filtered_cached = filtered_cached[:max_answers]
+            return filtered_cached
+        else:
+            if cache_meta.get('collected_at'):
+                log_print(f"🕐 缓存已过期（{cache_age_hours:.0f}小时前 / >{max_age}小时阈值），"
+                          f"将滚屏检查新回答")
+            else:
+                log_print(f"🕐 缓存无时间戳，将滚屏检查新回答")
+
+        # ── 缓存过期或阈值=0 → 滚屏增量扫描 ──
+        # 用并集全集的 existing_ids 做重叠检测（而非关键词过滤子集的 max_cached_id）
+        existing_ids = full_cached_ids
+
+        page.goto(answers_url, wait_until="domcontentloaded")
+        time.sleep(3)
+
+        new_items = []
+        seen_ids = set()
+        scroll_attempts = 0
+        max_scroll_attempts = 50
+        no_new_count = 0
+        consecutive_cached = 0
+        incremental_stop = False
+
+        log_print(f"🔍 关键词增量模式：并集缓存 {len(full_cached)} 条，当前匹配 {len(filtered_cached)} 条")
+        log_print(f"   「{' / '.join(keywords)}」")
+
+        while scroll_attempts < max_scroll_attempts and not incremental_stop:
+            if _is_stopped(stop_event):
+                log_print("\n  ⚠ 用户手动停止（增量收集阶段）")
+                break
+
+            cards = page.query_selector_all('[itemprop="zhihu:answer"], '
+                                             '.List-item, '
+                                             '[class*="AnswerItem"], '
+                                             '.ContentItem')
+
+            new_found_this_round = 0
+            for card in cards:
+                try:
+                    link_el = card.query_selector(
+                        'a[data-za-detail-view-element_name="Title"], '
+                        '.ContentItem-title a, '
+                        '.QuestionItem-title a, '
+                        'h2 a, '
+                        '[class*="question_link"]'
+                    )
+                    if not link_el:
+                        all_links = card.query_selector_all('a[href*="/answer/"]')
+                        for a in all_links:
+                            href = a.get_attribute('href') or ''
+                            if '/answer/' in href:
+                                link_el = a
+                                break
+                    if not link_el:
+                        continue
+
+                    href = link_el.get_attribute('href') or ''
+                    m = re.search(r'/answer/(\d+)', href)
+                    if not m:
+                        continue
+                    answer_id = m.group(1)
+
+                    # ── 重叠检测：已在并集缓存中 → 连续计数 ──
+                    if answer_id in existing_ids:
+                        consecutive_cached += 1
+                        if consecutive_cached >= 20:
+                            incremental_stop = True
+                            break
+                        continue
+                    consecutive_cached = 0  # 遇到未缓存 ID，重置
+
+                    if answer_id in seen_ids:
+                        continue
+                    seen_ids.add(answer_id)
+
+                    title = link_el.inner_text().strip()
+
+                    # 关键词检查
+                    kw_match = _any_keyword_matches(title, keywords)
+                    if not kw_match:
+                        preview = ''
+                        try:
+                            content_el = (
+                                card.query_selector('.RichContent-inner') or
+                                card.query_selector('[itemprop="text"]') or
+                                card.query_selector('[class*="RichContent"]')
+                            )
+                            if content_el:
+                                preview = content_el.inner_text().strip()
+                        except Exception:
+                            pass
+                        kw_match = _any_keyword_matches(preview, keywords)
+                    if not kw_match:
+                        continue  # 新回答但不含关键词，跳过
+
+                    # 匹配关键词的新回答 → 提取完整信息
+                    full_url = urljoin(page.url, href)
+
+                    upvotes = 0
+                    vote_el = card.query_selector(
+                        '[class*="VoteButton--up"], '
+                        '[class*="votecount"], '
+                        'button[aria-label*="赞同"]'
+                    )
+                    if vote_el:
+                        vt = vote_el.inner_text().strip() or '0'
+                        vt = vt.replace(',', '')
+                        m_v = re.search(r'[\d.万]+', vt)
+                        if m_v:
+                            vs = m_v.group()
+                            if '万' in vs:
+                                upvotes = int(float(vs.replace('万', '')) * 10000)
+                            else:
+                                upvotes = int(float(vs))
+
+                    date = ''
+                    try:
+                        card_html = card.evaluate('el => el.outerHTML')
+                        date = extract_date_from_html(card_html)
+                    except Exception:
+                        pass
+
+                    comment_count = 0
+                    try:
+                        comment_el = card.query_selector('[class*="CommentButton"]')
+                        if not comment_el:
+                            for btn in card.query_selector_all('button'):
+                                try:
+                                    if btn.is_visible() and '评论' in (btn.inner_text() or ''):
+                                        comment_el = btn
+                                        break
+                                except Exception:
+                                    pass
+                        if comment_el:
+                            ct = comment_el.inner_text().strip() or '0'
+                            m_c = re.search(r'[\d,.万]+', ct)
+                            if m_c:
+                                v = m_c.group().replace(',', '')
+                                if '万' in v:
+                                    comment_count = int(float(v.replace('万', '')) * 10000)
+                                else:
+                                    comment_count = int(float(v))
+                    except Exception:
+                        pass
+
+                    preview_text = ''
+                    try:
+                        content_el = (
+                            card.query_selector('.RichContent-inner') or
+                            card.query_selector('[itemprop="text"]') or
+                            card.query_selector('[class*="RichContent"]')
+                        )
+                        if content_el:
+                            preview_text = content_el.inner_text().strip()
+                    except Exception:
+                        pass
+
+                    new_items.append({
+                        'title': title,
+                        'url': full_url,
+                        'answer_id': answer_id,
+                        'upvotes': upvotes,
+                        'date': date,
+                        'comment_count': comment_count,
+                        'preview_text': preview_text,
+                    })
+                    new_found_this_round += 1
+                except Exception:
+                    continue
+
+            if incremental_stop:
+                break
+
+            if new_found_this_round == 0:
+                no_new_count += 1
+                if no_new_count >= 3:
+                    break
+            else:
+                no_new_count = 0
+
+            random_delay(
+                config.scroll_delay_min,
+                config.scroll_delay_max,
+                f"增量滚动 (第{scroll_attempts + 1}次)",
+                stop_check=lambda: _is_stopped(stop_event) if stop_event else False
+            )
+            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            time.sleep(1)
+            try:
+                load_more = page.locator(
+                    'button:has-text("加载更多"), '
+                    '[class*="PaginationButton"], '
+                    '.List-footer button'
+                ).first
+                if load_more.count() > 0 and load_more.is_visible():
+                    load_more.click()
+                    time.sleep(1)
+            except Exception:
+                pass
+            scroll_attempts += 1
+
+        # ── 合并保存：new_items ∪ 并集全量 → 去重 → 保存 → 过滤当前关键词返回 ──
+        if new_items:
+            # 与并集全量合并（answer_id 去重，新数据覆盖旧预览）
+            merge_map = {it['answer_id']: it for it in full_cached}
+            for it in new_items:
+                merge_map[it['answer_id']] = it
+            full_merged = list(merge_map.values())
+
+            # 保存并集缓存（merge=True 确保二次校验）
+            save_links_cache(get_output_path(config.output_dir, user_id), user_id,
+                           full_merged, merge=True, new_keyword=keyword)
+
+            # 从并集中过滤出匹配当前关键词的结果
+            result = []
+            for item in full_merged:
+                if _any_keyword_matches(item.get('title', ''), keywords) or \
+                   _any_keyword_matches(item.get('preview_text', ''), keywords):
+                    result.append(item)
+
+            log_print(f"🆕 增量 {len(new_items)} 条 + 并集 {len(full_cached)} 条 "
+                      f"→ 并集 {len(full_merged)} 条（当前匹配 {len(result)} 条）")
+            last_at = cache_meta.get('collected_at_iso', '未知')
+            now_str = time.strftime('%Y-%m-%d %H:%M:%S')
+            log_print(f"  ⌚ 上次收集: {last_at}，本次: {now_str}")
+            if cache_meta.get('collected_at'):
+                days_gap = (time.time() - cache_meta['collected_at']) / 86400
+                if days_gap > 1:
+                    log_print(f"  ⚠ 距上次收集已 {days_gap:.0f} 天，增量可能漏爬")
+
+            if max_answers > 0 and len(result) > max_answers:
+                result = result[:max_answers]
+            return result
+        else:
+            log_print(f"✅ 无新关键词匹配回答，使用缓存过滤结果: {len(filtered_cached)} 条")
+            if cache_meta.get('collected_at_iso'):
+                log_print(f"  ⌚ 缓存收集时间: {cache_meta['collected_at_iso']}")
+            if max_answers > 0 and len(filtered_cached) > max_answers:
+                filtered_cached = filtered_cached[:max_answers]
+            return filtered_cached
+
+    # ── 以下为全量收集（无缓存或缓存不兼容）──
     page.goto(answers_url, wait_until="domcontentloaded")
     time.sleep(3)
+
+    # 关键词列表（用于内嵌过滤）
+    keywords = _split_keywords(keyword) if keyword else []
 
     collected = []
     seen_ids = set()
@@ -200,6 +705,19 @@ def collect_answer_links(page: Page, user_id: str, max_answers: int = 0,
                 except Exception:
                     pass
 
+                # 提取预览文本（卡片上的内容摘要，用于关键词过滤）
+                preview_text = ''
+                try:
+                    content_el = (
+                        card.query_selector('.RichContent-inner') or
+                        card.query_selector('[itemprop="text"]') or
+                        card.query_selector('[class*="RichContent"]')
+                    )
+                    if content_el:
+                        preview_text = content_el.inner_text().strip()
+                except Exception:
+                    pass
+
                 # 构建完整 URL
                 full_url = urljoin(page.url, href)
 
@@ -211,6 +729,7 @@ def collect_answer_links(page: Page, user_id: str, max_answers: int = 0,
                     'upvotes': upvotes,
                     'date': date,
                     'comment_count': comment_count,
+                    'preview_text': preview_text,
                 })
                 new_found += 1
 
@@ -223,16 +742,6 @@ def collect_answer_links(page: Page, user_id: str, max_answers: int = 0,
 
         if max_answers > 0 and len(collected) >= max_answers:
             break
-
-        # 关键词提前终止：检查已收集链接中有多少标题匹配
-        if kws and keyword_min_match > 0:
-            title_match_count = sum(
-                1 for it in collected
-                if _any_keyword_matches(it.get('title', ''), kws)
-            )
-            if title_match_count >= keyword_min_match:
-                log_print(f"  🎯 已找到 {title_match_count} 条标题匹配（≥{keyword_min_match}），停止收集")
-                break
 
         # 无新内容计数
         if new_found == 0:
@@ -274,11 +783,28 @@ def collect_answer_links(page: Page, user_id: str, max_answers: int = 0,
         scroll_attempts += 1
 
     log_print(f"✅ 共收集 {len(collected)} 条回答链接")
-    # 缓存链接列表（关键词提前终止时不缓存——只收集了部分链接）
-    if not kws:
+    # 永久缓存链接列表（全量滚屏 → 全量保存）
+    if not _is_stopped(stop_event):
         from utils import get_output_path as _gop
-        save_links_cache(_gop(config.output_dir, user_id), user_id, collected, keyword_hash=kw_hash)
+        save_links_cache(_gop(config.output_dir, user_id), user_id, collected, merge=True, new_keyword=keyword)
+    else:
+        log_print("  ⚠ 用户手动停止，跳过缓存保存（数据可能不完整）")
+
+    # ── 关键词过滤（纯内存操作，在缓存保存之后）──
+    if keywords:
+        filtered = []
+        for item in collected:
+            if _any_keyword_matches(item.get('title', ''), keywords) or \
+               _any_keyword_matches(item.get('preview_text', ''), keywords):
+                filtered.append(item)
+        log_print(f"🔍 全量 {len(collected)} 条 → 关键词过滤 → {len(filtered)} 条"
+                  f"（匹配「{' / '.join(keywords)}」）")
+        if max_answers > 0 and len(filtered) > max_answers:
+            filtered = filtered[:max_answers]
+        return filtered
     return collected
+
+
 
 
 def _capture_answer_area(page: Page) -> bytes:
@@ -531,14 +1057,13 @@ def crawl_answer_combined(page: Page, item: dict,
 
         # ── 4. 截图：仅问题+回答内容区（排除右侧栏），保存为独立 PNG ──
         screenshot_bytes = _capture_answer_area(page)
-        # 保存截图 PNG（使用绝对路径，MD 移动后图片仍可加载）
+        # 保存截图 PNG（使用相对路径 ./{aid}.png，MD 与 PNG 同目录）
         screenshot_filename = f"{answer_id}.png"
-        screenshot_ref = None
+        screenshot_ref = f"./{screenshot_filename}"  # 相对路径，跨平台兼容
         if output_dir:
             try:
                 png_path = Path(output_dir).resolve() / screenshot_filename
                 png_path.write_bytes(screenshot_bytes)
-                screenshot_ref = str(png_path)  # 绝对路径引用
             except Exception:
                 screenshot_ref = None  # 写盘失败则跳过截图引用
 
@@ -686,14 +1211,14 @@ def crawl_answer_combined(page: Page, item: dict,
         }
 
 
-def get_crawl_status(user_id: str) -> dict:
+def get_crawl_status(user_id: str, nickname: str = "") -> dict:
     """
     预检查：返回用户的爬取状态摘要
-    {user_id, output_dir, total_progress, existing_count, missing_count, missing_details}
+    {user_id, output_dir, total_progress, existing_count, missing_count, missing_details, groups_info}
     """
-    output_dir = get_output_path(config.output_dir, user_id)
+    output_dir = get_output_path(config.output_dir, user_id, nickname=nickname)
     existing, missing, missing_details = check_missing_files(output_dir)
-    completed_set = load_progress(output_dir)
+    completed_set, _, groups_info = load_progress_full(output_dir)
 
     return {
         'user_id': user_id,
@@ -703,13 +1228,15 @@ def get_crawl_status(user_id: str) -> dict:
         'missing_count': len(missing),
         'missing_ids': missing,
         'missing_details': missing_details,
+        'groups_info': groups_info,
     }
 
 
 def crawl_user_answers(page: Page, user_id: str,
                        force_recrawl_ids: set = None,
                        stop_event=None,
-                       keyword: str = "") -> dict:
+                       keyword: str = "",
+                       scroll_only: bool = False) -> dict:
     """
     爬取指定用户的所有回答
 
@@ -719,7 +1246,8 @@ def crawl_user_answers(page: Page, user_id: str,
         force_recrawl_ids: 强制重新爬取的回答 ID 集合
                           （这些 ID 即使有进度记录也会重新爬取）
         stop_event: threading.Event，用于支持 GUI 中途停止
-        keyword: 关键词过滤（仅抓取标题含此关键词的回答）
+        keyword: 关键词过滤（仅爬取标题含此关键词的回答）
+        scroll_only: 仅滚屏收集链接+缓存，不生成 MD（用于「爬取」与「输出MD」分离）
 
     返回统计信息
     """
@@ -727,15 +1255,31 @@ def crawl_user_answers(page: Page, user_id: str,
     user_profile = scrape_user_profile(page, user_id)
     nickname = user_profile.get('nickname', '')
 
+    # 更新头像URL到用户列表
+    avatar_url = user_profile.get('avatar_url', '')
+    if avatar_url:
+        from id_manager import get_id_manager
+        mgr = get_id_manager()
+        mgr.update_avatar(user_id, avatar_url)
+
     # 预检查文件状态（使用含昵称的目录名；首次运行时会自动迁移旧目录）
     output_dir = get_output_path(config.output_dir, user_id, nickname)
     existing, missing, _ = check_missing_files(output_dir)
-    completed_set = load_progress(output_dir)
+    completed_set, _, groups_info = load_progress_full(output_dir)
+
+    # 生成当前关键词哈希（用于分组追踪）
+    import hashlib
+    kw_hash = hashlib.md5(keyword.encode('utf-8')).hexdigest()[:8] if keyword else ""
+
+    # 记录运行前已完成的 ID（用于区分本批次新增）
+    pre_existing_ids = set(completed_set)
 
     # 强制忽略缓存：清空进度，从头重爬
     if config.force_no_cache:
         if completed_set:
-            log_print(f"🔄 强制忽略缓存：已清除 {len(completed_set)} 条进度记录，将全部重新爬取")
+            group_lines = get_group_summary(output_dir)
+            detail = f"\n  原有关键词分组:\n{group_lines}" if group_lines else ""
+            log_print(f"🔄 强制忽略缓存：已清除 {len(completed_set)} 条进度记录，将全部重新爬取{detail}")
             completed_set = set()
             # 同时清空 force_recrawl_ids，避免双重提示
             force_recrawl_ids = None
@@ -766,7 +1310,13 @@ def crawl_user_answers(page: Page, user_id: str,
     log_print()
 
     log_print(f"📁 输出目录: {output_dir}")
-    log_print(f"📋 已完成: {len(completed_set)} 条"
+    # 按关键词分组统计
+    if keyword and groups_info:
+        group_summary = get_group_summary(output_dir)
+        if group_summary:
+            log_print(f"📋 历史关键词分组:")
+            log_print(group_summary)
+    log_print(f"📋 已完成(汇总): {len(completed_set)} 条"
           + (f" (其中 {len(missing)} 条本地文件缺失)" if missing else ""))
 
     # 收集回答链接
@@ -782,44 +1332,36 @@ def crawl_user_answers(page: Page, user_id: str,
         log_print("\n  ⚠ 用户手动停止（收集链接阶段）")
         items = []
 
-    # 关键词过滤（标题 OR 内容，多关键词 OR 关系，去重）
-    check_content_ids = set()  # 需爬取后检查内容的 answer_id 集合
+    # 关键词过滤已在 collect_answer_links 末尾完成（纯内存操作），此处 items 已为匹配项
     if keyword:
         keywords = _split_keywords(keyword)
-        if keywords:
-            before = len(items)
-            title_match = []
-            title_no_match = []
-            for it in items:
-                if _any_keyword_matches(it.get('title', ''), keywords):
-                    title_match.append(it)
-                else:
-                    title_no_match.append(it)
-            # 去重：每个回答只在一个列表中（answer_id 已在 collect_answer_links 中去重）
-            for it in title_no_match:
-                check_content_ids.add(it['answer_id'])
-            items = title_match + title_no_match
-            kw_display = ' / '.join(keywords)
-            log_print(f"🔍 关键词过滤（{len(keywords)}个 / 标题OR内容 / 任一命中即抓取）:")
-            log_print(f"   「{kw_display}」")
-            log_print(f"   标题匹配: {len(title_match)} 条（直接抓取）")
-            log_print(f"   待查内容: {len(title_no_match)} 条（爬取后检查回答内容）")
-            log_print(f"   合计 {len(items)}/{before} 条进入爬取队列")
+        kw_display = ' / '.join(keywords)
+        log_print(f"🔍 关键词过滤（{len(keywords)}个 / 标题或预览匹配）:")
+        log_print(f"   「{kw_display}」")
+        log_print(f"   匹配: {len(items)} 条")
 
-    # 测试模式+关键词：只保留前 3 条进入爬取（collect_answer_links 已提前停止收集，此处兜底）
+    # 测试模式+关键词：只保留前 3 条进入爬取
     if config.test_mode and keyword and len(items) > 3:
         items = items[:3]
-        check_content_ids = {it['answer_id'] for it in items if it['answer_id'] in check_content_ids}
         log_print(f"🧪 测试模式：取前 {len(items)} 条匹配项进入爬取")
 
     # 过滤已完成的（force_recrawl_ids 已从 completed_set 中移除）
     new_items = [it for it in items if it['answer_id'] not in completed_set]
     skipped = len(items) - len(new_items)
 
+    # 增量提示：多少条因其他关键词已完成而被跳过
+    if keyword and skipped > 0 and groups_info:
+        other_kw_hits = sum(
+            1 for it in items
+            if it['answer_id'] in completed_set and it['answer_id'] not in pre_existing_ids
+        )
+        log_print(f"⏭ 跳过 {skipped} 条（其中 {skipped} 条已被其他关键词覆盖）")
+
     if _is_stopped(stop_event) and len(items) == 0:
         # 在收集链接阶段被停止且未收集到任何内容，直接保存进度返回
         log_print("⚠ 收集链接阶段被停止，未获取到回答列表")
-        save_progress(output_dir, completed_set, file_map={})
+        save_progress(output_dir, completed_set, file_map={}, 
+                      keyword_hash=kw_hash, keyword_str=keyword, new_ids=set())
         return {
             'user_id': user_id,
             'success': 0,
@@ -833,12 +1375,28 @@ def crawl_user_answers(page: Page, user_id: str,
         log_print(f"⏭ 跳过 {skipped} 条已完成")
     log_print(f"📝 待爬取: {len(new_items)} 条\n")
 
+    # ── scroll_only 模式：只滚屏收集链接+缓存，不生成 MD ──
+    if scroll_only:
+        log_print(f"🔄 滚屏收集完成（scroll_only），共收集 {len(items)} 条链接"
+                  f"，其中 {len(new_items)} 条待爬取")
+        return {
+            'user_id': user_id,
+            'success': 0,
+            'failed': 0,
+            'skipped': skipped,
+            'total': len(completed_set) + len(new_items),
+            'collected': len(items),
+            'pending': len(new_items),
+            'output_dir': str(output_dir),
+            'scroll_only': True,
+        }
+
     # 逐条爬取（统一使用混合模式：截图 + 文字 + base64图片嵌入）
     all_meta = []
     file_map = {}           # answer_id → filename（当前批次）
+    session_new_ids = set() # 本批次新增完成的 answer_id（用于关键词分组标记）
     success = 0
     failed = 0
-    content_skip = 0        # 内容不含关键词的跳过数
 
     for i, item in enumerate(new_items):
         # 检查停止信号
@@ -876,23 +1434,13 @@ def crawl_user_answers(page: Page, user_id: str,
                         ).decode('ascii')
                     save_answer_cache(output_dir, aid, cache_result)
             if result and result['md_text']:
-                # 内容关键词检查（仅对标题不匹配的项，多关键词 OR 关系）
-                if keyword and item['answer_id'] in check_content_ids:
-                    keywords = _split_keywords(keyword)
-                    if keywords and not (
-                        _any_keyword_matches(result.get('html_text', ''), keywords) or
-                        _any_keyword_matches(result['md_text'], keywords)
-                    ):
-                        log_print(f"    ⊘ 跳过（内容不含任一关键词）")
-                        content_skip += 1
-                        continue
-
-                # 修复旧缓存中可能残留的 base64 截图引用 → 绝对 PNG 路径引用
+                # 修复旧缓存中可能残留的 base64 截图引用 → 相对 PNG 路径引用
                 md_to_save = result['md_text']
                 if 'data:image/png;base64,' in md_to_save:
+                    # 使用 lambda 替换避免 Windows 路径中的反斜杠被 re.sub 误解析为正则转义
                     md_to_save = re.sub(
                         r'!\[问题与回答截图\]\(data:image/png;base64,[^)]+\)',
-                        f'![问题与回答截图]({Path(output_dir).resolve() / f"{aid}.png"})',
+                        lambda m, _aid=aid: f'![问题与回答截图](./{_aid}.png)',
                         md_to_save
                     )
                 fpath = save_answer(
@@ -902,14 +1450,17 @@ def crawl_user_answers(page: Page, user_id: str,
                     result.get('html_text', '')
                 )
                 all_meta.append(result['meta'])
-                completed_set.add(item['answer_id'])
-                file_map[item['answer_id']] = fpath.name
+                completed_set.add(aid)
+                session_new_ids.add(aid)
+                file_map[aid] = fpath.name
                 success += 1
                 log_print(f"    ✓ 已保存(混合): {fpath.name}")
 
                 # 每 10 条保存一次进度
                 if success % 10 == 0:
-                    save_progress(output_dir, completed_set, file_map=file_map)
+                    save_progress(output_dir, completed_set, file_map=file_map,
+                                  keyword_hash=kw_hash, keyword_str=keyword,
+                                  new_ids=session_new_ids)
                     file_map.clear()
             else:
                 failed += 1
@@ -929,21 +1480,29 @@ def crawl_user_answers(page: Page, user_id: str,
         except StopCrawlException:
             log_print("\n  ⚠ 用户手动停止（延迟中）")
             break
+        except Exception as e:
+            failed += 1
+            log_print(f"    ✗ 异常: {e}")
 
-    # 最终保存（file_map 合并写入 .cache/progress.json，历史记录不会丢失）
-    save_progress(output_dir, completed_set, file_map=file_map)
-    # INDEX.md 不再自动生成（用户仅需 MD 成果文件）
+    # 最终保存（file_map 合并写入 cache_data/{user}/.cache/progress.json，历史记录不会丢失）
+    save_progress(output_dir, completed_set, file_map=file_map,
+                  keyword_hash=kw_hash, keyword_str=keyword,
+                  new_ids=session_new_ids)
 
     # EVIDENCE_REPORT.md 暂不生成，需要时单独提出
+
+    # 最终分组摘要
+    final_group_summary = get_group_summary(output_dir)
 
     log_print(f"\n{'='*60}")
     log_print(f"✅ {user_id} 爬取完成")
     parts = [f"新增: {success} 条"]
-    if content_skip:
-        parts.append(f"内容不含关键词跳过: {content_skip} 条")
     parts.append(f"失败: {failed} 条 | 跳过(已完成): {skipped} 条")
     log_print(f"   {' | '.join(parts)}")
     log_print(f"   总计: {len(completed_set)} 条回答")
+    if final_group_summary:
+        log_print(f"  关键词分组:")
+        log_print(final_group_summary)
     log_print(f"   输出: {output_dir.resolve()}")
     log_print(f"{'='*60}\n")
 
@@ -952,7 +1511,6 @@ def crawl_user_answers(page: Page, user_id: str,
         'success': success,
         'failed': failed,
         'skipped': skipped,
-        'content_skip': content_skip,
         'total': len(completed_set),
         'output_dir': str(output_dir),
     }
@@ -1248,6 +1806,7 @@ def scrape_user_profile(page: Page, user_id: str) -> dict:
     profile_url = f"https://www.zhihu.com/people/{user_id}"
     result = {
         'nickname': user_id,
+        'avatar_url': '',
         'followers': 0,
         'following': 0,
         'upvotes_received': 0,
@@ -1310,6 +1869,24 @@ def scrape_user_profile(page: Page, user_id: str) -> dict:
             except Exception:
                 pass
 
+        # 策略3a: 从页面直接提取头像（Playwright，新版知乎 JS 渲染）
+        if not result['avatar_url']:
+            try:
+                avatar_el = page.query_selector(
+                    '[class*="Avatar"] img,'
+                    ' [class*="ProfileHeader-avatar"] img,'
+                    ' img[class*="Avatar"],'
+                    ' img[alt*="头像"]'
+                )
+                if avatar_el:
+                    avatar_src = avatar_el.get_attribute('src') or ''
+                    if avatar_src:
+                        if avatar_src.startswith('//'):
+                            avatar_src = 'https:' + avatar_src
+                        result['avatar_url'] = avatar_src
+            except Exception:
+                pass
+
         # 策略3: 从页面meta/结构化数据提取（旧版知乎） 
         try:
             html = page.content()
@@ -1328,6 +1905,20 @@ def scrape_user_profile(page: Page, user_id: str) -> dict:
                                        ' [class*="UserLink-link"]')
             if name_el:
                 result['nickname'] = name_el.get_text(strip=True)
+
+            # 头像
+            avatar_el = soup.select_one('[class*="Avatar"] img,'
+                                        ' [class*="ProfileHeader-avatar"] img,'
+                                        ' [class*="UserLink"] img,'
+                                        ' img[class*="Avatar"],'
+                                        ' img[alt*="头像"]')
+            if avatar_el:
+                avatar_src = avatar_el.get('src', '') or avatar_el.get('data-src', '')
+                if avatar_src:
+                    # 补全协议
+                    if avatar_src.startswith('//'):
+                        avatar_src = 'https:' + avatar_src
+                    result['avatar_url'] = avatar_src
 
             # 简介
             bio_el = soup.select_one('[class*="ProfileHeader-headline"],'

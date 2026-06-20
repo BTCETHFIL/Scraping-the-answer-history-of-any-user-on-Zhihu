@@ -8,6 +8,7 @@ build/
 
 # 爬虫输出 & 敏感数据（整目录忽略）
 output/
+cache_data/
 browser_data/
 
 # 环境 & 个人配置

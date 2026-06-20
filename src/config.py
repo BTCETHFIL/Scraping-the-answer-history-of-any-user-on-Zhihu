@@ -40,8 +40,11 @@ class Config:
     forensic_mode: bool = True     # 法务模式：默认保存HTML、生成证据报告、文件SHA256哈希
 
     # ── 缓存设置 ──
-    cache_ttl_minutes: int = 30    # 重复爬取间隔内不重新获取（0=禁用缓存）
+    cache_dir: str = "cache_data"  # 缓存目录（独立于 output，防止用户清理 output 时误删）
+    cache_ttl_minutes: int = 0     # 链接/回答内容缓存有效期（0=永久有效，-1=禁用缓存）
     force_no_cache: bool = False   # 强制忽略所有缓存+进度，从头重新爬取
+    links_cache_max_age_hours: int = 24  # 链接缓存新鲜度阈值（小时）。换关键词时，若缓存距上次收集未超过此值，
+                                         # 则跳过滚屏，直接内存重过滤（0=始终滚屏增量检查）
 
     # ── 输出文件名模板 ──
     # 可用变量: {date}, {title}, {upvotes}, {answer_id}

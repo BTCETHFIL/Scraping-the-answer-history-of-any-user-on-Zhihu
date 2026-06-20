@@ -106,11 +106,40 @@ def embed_images_base64(md_text: str, cookies: dict = None) -> str:
 
 # ── 进度管理 ──
 
+# progress.json 新格式 (v2):
+# {
+#   "completed": {
+#     "12345678": {"filename": "xxx.md", "groups": ["hash1", "hash2"]},
+#     ...
+#   },
+#   "groups": {
+#     "hash1": {"keywords": "蔚来",  "count": 20, "last_run": "2026-06-20 20:30:00"},
+#     "hash2": {"keywords": "比亚迪", "count": 15, "last_run": "2026-06-20 20:35:00"}
+#   },
+#   "last_updated": "2026-06-20 20:35:00"
+# }
+# 兼容旧格式:
+#   v0: "completed": ["id1", "id2"]              → 迁移到 v2（无 filename, groups=[]）
+#   v1: "completed": {"id1": "f1.md", "id2": ""}  → 迁移到 v2（groups=[]）
+
+
+def _normalize_entry(entry_value) -> dict:
+    """将旧格式的 entry 值（str 或 dict）标准化为 v2 格式"""
+    if isinstance(entry_value, str):
+        return {'filename': entry_value, 'groups': []}
+    elif isinstance(entry_value, dict):
+        if 'groups' not in entry_value:
+            entry_value['groups'] = []
+        if 'filename' not in entry_value:
+            entry_value['filename'] = ''
+        return entry_value
+    return {'filename': '', 'groups': []}
+
+
 def load_progress(output_dir: Path) -> set:
-    """加载已爬取的回答 ID 集合"""
+    """加载所有已爬取的回答 ID 集合（跨关键词汇总）"""
     _data = _load_progress_data(output_dir)
     completed = _data.get('completed', [])
-    # 兼容旧格式（列表）和新格式（字典）
     if isinstance(completed, list):
         return set(completed)
     elif isinstance(completed, dict):
@@ -123,12 +152,44 @@ def load_progress_with_files(output_dir: Path) -> tuple[set, dict]:
     _data = _load_progress_data(output_dir)
     completed = _data.get('completed', [])
     if isinstance(completed, list):
-        # 旧格式：没有文件名映射，需从本地文件反向查找
         files = _discover_files_from_disk(output_dir, set(completed))
         return set(completed), files
     elif isinstance(completed, dict):
-        return set(completed.keys()), dict(completed)
+        files = {}
+        for aid, entry in completed.items():
+            entry = _normalize_entry(entry)
+            fname = entry.get('filename', '')
+            if fname:
+                files[aid] = fname
+        return set(completed.keys()), files
     return set(), {}
+
+
+def load_progress_full(output_dir: Path) -> tuple[set, dict, dict]:
+    """
+    加载完整进度信息（v2 格式）
+    返回 (completed_set, file_map, groups_info)
+    groups_info: {keyword_hash: {keywords, count, last_run}, ...}
+    """
+    _data = _load_progress_data(output_dir)
+    completed_raw = _data.get('completed', [])
+
+    completed_set = set()
+    file_map = {}
+
+    if isinstance(completed_raw, list):
+        completed_set = set(completed_raw)
+        file_map = _discover_files_from_disk(output_dir, completed_set)
+    elif isinstance(completed_raw, dict):
+        for aid, entry in completed_raw.items():
+            completed_set.add(aid)
+            entry = _normalize_entry(entry)
+            fname = entry.get('filename', '')
+            if fname:
+                file_map[aid] = fname
+
+    groups_info = _data.get('groups', {})
+    return completed_set, file_map, groups_info
 
 
 def _progress_file(output_dir: Path) -> Path:
@@ -138,10 +199,8 @@ def _progress_file(output_dir: Path) -> Path:
 
 def _load_progress_data(output_dir: Path) -> dict:
     """读取 progress.json 原始数据，兼容旧位置的迁移"""
-    # 新位置优先
     new_file = _progress_file(output_dir)
     old_file = output_dir / "progress.json"
-    # 迁移：旧位置存在但新位置不存在时，移动到新位置
     if old_file.exists() and not new_file.exists():
         try:
             shutil.move(str(old_file), str(new_file))
@@ -169,36 +228,108 @@ def _discover_files_from_disk(output_dir: Path, answer_ids: set) -> dict:
 
 
 def save_progress(output_dir: Path, completed: set,
-                  file_map: dict = None):
+                  file_map: dict = None,
+                  keyword_hash: str = "",
+                  keyword_str: str = "",
+                  new_ids: set = None):
     """
     保存爬取进度（存于 .cache/progress.json）
-    file_map: {answer_id: filename} 可选的文件名映射
+
+    参数:
+        completed: 所有已完成的 answer_id 集合（含之前关键词的）
+        file_map: {answer_id: filename} 本批次新增的文件名映射
+        keyword_hash: 当前关键词组哈希（8位MD5前缀），空字符串表示无关键词
+        keyword_str: 当前关键词原始字符串（用于显示）
+        new_ids: 本批次新增完成的 answer_id 集合（仅这些会被标记当前关键词）
     """
     progress_file = _progress_file(output_dir)
-    # 合并已有的 files 映射
     existing_data = _load_progress_data(output_dir)
-    existing_files = {}
-    old_completed = existing_data.get('completed', [])
-    if isinstance(old_completed, dict):
-        existing_files = dict(old_completed)
 
+    # ── 加载已有 completed 数据（含 groups 信息）──
+    old_completed_raw = existing_data.get('completed', [])
+    old_entries = {}  # {answer_id: {filename, groups}}
+
+    if isinstance(old_completed_raw, list):
+        for aid in old_completed_raw:
+            old_entries[aid] = {'filename': '', 'groups': []}
+    elif isinstance(old_completed_raw, dict):
+        for aid, entry in old_completed_raw.items():
+            old_entries[aid] = _normalize_entry(entry)
+
+    # 合并文件映射
     if file_map:
-        existing_files.update(file_map)
+        for aid, fname in file_map.items():
+            if aid in old_entries:
+                old_entries[aid]['filename'] = fname or old_entries[aid]['filename']
+            else:
+                old_entries[aid] = {'filename': fname, 'groups': []}
 
-    # 构建新的 completed 字典：{answer_id: filename}
+    # ── 加载已有 groups 信息 ──
+    groups_info = existing_data.get('groups', {})
+
+    # ── 本批次新增的 ID 集合 ──
+    if new_ids is None:
+        new_ids = set()
+    # 确保 new_ids 是 set 类型
+    new_ids = set(new_ids)
+
+    # ── 构建新的 completed 字典（v2 格式）──
     new_completed = {}
     for aid in sorted(completed):
-        new_completed[aid] = existing_files.get(aid, '')
+        entry = old_entries.get(aid, {'filename': '', 'groups': []})
+        # 仅为本批次新增的回答打上当前关键词标签（去重）
+        if keyword_hash and aid in new_ids and keyword_hash not in entry['groups']:
+            entry['groups'].append(keyword_hash)
+        new_completed[aid] = {
+            'filename': entry.get('filename', ''),
+            'groups': entry.get('groups', []),
+        }
+
+    # ── 更新 groups 统计（仅当有关键词时）──
+    if keyword_hash:
+        # 统计带当前关键词标签的回答数量
+        kw_count = sum(
+            1 for entry in new_completed.values()
+            if keyword_hash in entry.get('groups', [])
+        )
+        # 合并已有的 count（避免 force_no_cache 时归零）
+        old_count = groups_info.get(keyword_hash, {}).get('count', 0)
+        groups_info[keyword_hash] = {
+            'keywords': keyword_str,
+            'count': max(kw_count, old_count),
+            'last_run': time.strftime('%Y-%m-%d %H:%M:%S'),
+        }
 
     data = {
         'completed': new_completed,
         'total': len(completed),
+        'groups': groups_info,
         'last_updated': time.strftime('%Y-%m-%d %H:%M:%S'),
     }
     progress_file.write_text(
         json.dumps(data, ensure_ascii=False, indent=2),
         encoding='utf-8'
     )
+
+
+def get_group_summary(output_dir: Path) -> str:
+    """
+    返回人类可读的关键词组统计摘要
+    格式:
+      🔑 蔚来: 20条 (2026-06-20 20:30)
+      🔑 比亚迪: 15条 (2026-06-20 20:35)
+    """
+    _, _, groups_info = load_progress_full(output_dir)
+    if not groups_info:
+        return ""
+    lines = []
+    for khash, info in sorted(groups_info.items(),
+                               key=lambda x: x[1].get('last_run', '')):
+        kws = info.get('keywords', '无关键词')
+        cnt = info.get('count', 0)
+        last = info.get('last_run', '未知')
+        lines.append(f"  🔑 {kws}: {cnt}条 ({last})")
+    return '\n'.join(lines)
 
 
 def check_missing_files(output_dir: Path) -> tuple[set, set, dict]:
@@ -223,7 +354,6 @@ def check_missing_files(output_dir: Path) -> tuple[set, set, dict]:
                 missing.add(aid)
                 missing_details[aid] = {'filename': fname}
         else:
-            # 没有文件名映射，尝试模糊匹配
             found = False
             if output_dir.exists():
                 for f in output_dir.glob("*.md"):
@@ -242,91 +372,184 @@ def check_missing_files(output_dir: Path) -> tuple[set, set, dict]:
 
 
 
-# ── 短时缓存：避免短时间内重复网络请求 ──
+# ── 缓存目录（独立于 output，防用户误删）──
+
+def _get_cache_root() -> Path:
+    """缓存根目录（cache_data/，与 output/ 平级，不会被用户误操作影响）"""
+    root = Path(config.cache_dir)
+    if not root.is_absolute():
+        root = Path.cwd() / root
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
 
 def _cache_dir(output_dir: Path) -> Path:
-    d = output_dir / ".cache"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    """
+    返回用户缓存目录（cache_data/{user_dir_name}/.cache/）
+    自动从旧位置 output/{user_dir_name}/.cache/ 迁移
+    """
+    user_key = output_dir.name  # e.g., "nickname_userid"
+    new_dir = _get_cache_root() / user_key / ".cache"
+    old_dir = output_dir / ".cache"
+
+    # 一次性迁移：旧位置有缓存但新位置没有 → 复制
+    if old_dir.exists() and not new_dir.exists():
+        try:
+            shutil.copytree(str(old_dir), str(new_dir))
+        except Exception:
+            pass
+
+    new_dir.mkdir(parents=True, exist_ok=True)
+    return new_dir
 
 
-def _links_cache_key(output_dir: Path, user_id: str, keyword_hash: str = "") -> Path:
-    """获取链接缓存文件路径，keyword_hash 用于区分不同关键词配置的缓存"""
-    d = _cache_dir(output_dir)
-    if keyword_hash:
-        return d / f"links_{keyword_hash}.json"
-    return d / "links.json"
+def _links_cache_key(output_dir: Path, user_id: str) -> Path:
+    """获取链接缓存文件路径（用户级并集，与关键词无关）"""
+    return _cache_dir(output_dir) / "links.json"
 
 
-def load_links_cache(output_dir: Path, user_id: str, keyword_hash: str = "") -> list | None:
-    """加载缓存的回答链接列表，过期返回 None"""
-    if config.force_no_cache or not config.cache_ttl_minutes:
-        return None
-    cache_file = _links_cache_key(output_dir, user_id, keyword_hash)
+def _load_existing_cache_items(cache_file: Path) -> list | None:
+    """从缓存文件读取 items（内部辅助，不打印日志）"""
     if not cache_file.exists():
         return None
     try:
         data = json.loads(cache_file.read_text(encoding='utf-8'))
-        age = time.time() - data.get('fetched_at', 0)
-        ttl = config.cache_ttl_minutes * 60
-        if age < ttl:
-            print(f"  📦 使用缓存的链接列表（{age:.0f}秒前，TTL={config.cache_ttl_minutes}分钟）")
-            return data.get('items', [])
-        else:
-            print(f"  ⏰ 链接缓存已过期（{age:.0f}秒 > {ttl}秒）")
+        return data.get('items', [])
+    except Exception:
+        return None
+
+
+def load_links_cache(output_dir: Path, user_id: str) -> tuple[list | None, dict]:
+    """加载缓存的回答链接列表（永久有效，除非 force_no_cache）
+    返回 (items, meta) — meta含collected_at/oldest_id/newest_id用于增量时间校验
+    缓存为用户级并集：同一用户的所有关键词匹配回答合并存储。"""
+    if config.force_no_cache or config.cache_ttl_minutes < 0:
+        return None, {}
+    cache_file = _links_cache_key(output_dir, user_id)
+    if not cache_file.exists():
+        return None, {}
+    try:
+        data = json.loads(cache_file.read_text(encoding='utf-8'))
+        collected_at = data.get('collected_at', data.get('fetched_at', 0))
+        age = time.time() - collected_at
+        items = data.get('items', [])
+        meta = {
+            'collected_at': collected_at,
+            'collected_at_iso': data.get('collected_at_iso', ''),
+            'oldest_id': data.get('oldest_id', 0),
+            'newest_id': data.get('newest_id', 0),
+            'count': len(items),
+        }
+        # 显示时间 + ID 范围（用于增量校验）
+        oldest = meta['oldest_id']
+        newest = meta['newest_id']
+        used_kws = data.get('used_keywords', [])
+        kw_info = f"，已用关键词: {', '.join(used_kws)}" if used_kws else ""
+        print(f"  📦 使用缓存链接（{len(items)}条并集，{age/3600:.1f}小时前收集，ID{oldest}～{newest}{kw_info}）")
+        return items, meta
     except Exception:
         pass
-    return None
+    return None, {}
 
 
-def save_links_cache(output_dir: Path, user_id: str, items: list, keyword_hash: str = ""):
-    """缓存回答链接列表"""
-    if not config.cache_ttl_minutes:
+def save_links_cache(output_dir: Path, user_id: str, items: list, merge: bool = True,
+                     new_keyword: str = ""):
+    """缓存回答链接列表（永久有效，含时间戳和ID范围用于增量校验）
+    
+    merge=True（默认）：与已有缓存做并集合并（answer_id 去重），实现跨关键词累积。
+    merge=False：直接覆盖（全量重新收集时使用）。
+    new_keyword：本次使用的关键词，会追加到 used_keywords 元信息中。
+    """
+    if config.cache_ttl_minutes < 0:
         return
-    cache_file = _links_cache_key(output_dir, user_id, keyword_hash)
+    cache_file = _links_cache_key(output_dir, user_id)
+
+    # 合并模式：加载已有缓存做并集
+    if merge:
+        existing = _load_existing_cache_items(cache_file)
+        if existing:
+            existing_map = {it['answer_id']: it for it in existing}
+            for it in items:
+                existing_map[it['answer_id']] = it  # 新数据覆盖旧（更新预览等）
+            items = list(existing_map.values())
+
+    # 更新 used_keywords 元信息
+    used_keywords = []
+    if cache_file.exists():
+        try:
+            old_data = json.loads(cache_file.read_text(encoding='utf-8'))
+            used_keywords = old_data.get('used_keywords', [])
+        except Exception:
+            pass
+    if new_keyword and new_keyword not in used_keywords:
+        used_keywords.append(new_keyword)
+
+    # 计算 ID 范围
+    ids = [int(it['answer_id']) for it in items if it.get('answer_id', '').isdigit()]
     data = {
         'user_id': user_id,
-        'fetched_at': time.time(),
-        'ttl_minutes': config.cache_ttl_minutes,
+        'collected_at': time.time(),
+        'collected_at_iso': time.strftime('%Y-%m-%d %H:%M:%S'),
         'count': len(items),
+        'oldest_id': min(ids) if ids else 0,
+        'newest_id': max(ids) if ids else 0,
+        'used_keywords': used_keywords,
         'items': items,
     }
     cache_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
 
+    # 清理旧版 keyword_hash 分隔的缓存文件（links_*.json），迁移到统一 links.json
+    cache_dir = cache_file.parent
+    for old_file in cache_dir.glob("links_*.json"):
+        try:
+            old_file.unlink()
+        except Exception:
+            pass
+
 
 def load_answer_cache(output_dir: Path, answer_id: str) -> dict | None:
-    """加载缓存的回答内容，过期返回 None"""
-    if config.force_no_cache or not config.cache_ttl_minutes:
+    """加载缓存的回答内容（永久有效，除非 force_no_cache）"""
+    if config.force_no_cache or config.cache_ttl_minutes < 0:
         return None
     cache_file = _cache_dir(output_dir) / f"{answer_id}.json"
     if not cache_file.exists():
         return None
     try:
         data = json.loads(cache_file.read_text(encoding='utf-8'))
-        age = time.time() - data.get('fetched_at', 0)
-        ttl = config.cache_ttl_minutes * 60
-        if age < ttl:
-            return data.get('result')
-        else:
-            # 不打印单条过期日志，太吵
-            pass
+        return data.get('result')
     except Exception:
         pass
     return None
 
 
 def save_answer_cache(output_dir: Path, answer_id: str, result: dict):
-    """缓存回答内容"""
-    if not config.cache_ttl_minutes:
+    """缓存回答内容（永久有效）"""
+    if config.cache_ttl_minutes < 0:
         return
     cache_file = _cache_dir(output_dir) / f"{answer_id}.json"
     data = {
         'answer_id': answer_id,
-        'fetched_at': time.time(),
-        'ttl_minutes': config.cache_ttl_minutes,
+        'collected_at': time.time(),
         'result': result,
     }
     cache_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
+
+
+def clear_user_cache(output_dir: Path) -> int:
+    """清除指定用户的所有缓存（links.json + 回答内容缓存），保留进度文件。返回删除文件数。"""
+    cache_dir = _cache_dir(output_dir)
+    if not cache_dir.exists():
+        return 0
+    deleted = 0
+    for f in cache_dir.iterdir():
+        if f.name in ('progress.json',):
+            continue
+        try:
+            f.unlink()
+            deleted += 1
+        except Exception:
+            pass
+    return deleted
 
 
 

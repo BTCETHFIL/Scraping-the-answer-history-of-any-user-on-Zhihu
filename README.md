@@ -4,23 +4,35 @@
 
 支持 **GUI 图形界面** 和 **命令行** 两种方式。
 
+## 🆕 核心设计：滚屏与输出分离
+
+GUI 将「收集链接」与「生成 MD」拆为两个独立步骤：
+
+| 阶段 | 操作 | 说明 |
+|------|------|------|
+| **一、滚屏** | 点「开始滚屏」 | 浏览器自动滚动，全量收集所有回答链接到缓存（24h 有效），**不生成 MD 文件** |
+| **二、输出** | 点「从缓存生成 MD」 | 从缓存读取链接，可加关键词筛选，逐条抓取回答并生成 Markdown |
+
+这样设计的好处：一次滚屏可反复用不同关键词生成多份 MD，避免重复滚屏请求。
+
 ## 功能特点
 
 - **图形界面** — 直观的 Tkinter GUI，一站式配置、监控和 ID 管理
+- **滚屏收集** — 自动滚动加载用户的所有回答链接，存入本地缓存
+- **缓存生成 MD** — 从已缓存的链接按需生成 Markdown，支持不选关键词全量输出
 - **三种登录方式** — 扫码登录 / 手动 Cookie / 复用 storage_state，灵活应对不同环境
-- **全量爬取** — 自动滚动加载用户的所有回答
 - **断点续传** — 进度记录到 `progress.json`，中断后从断点继续
 - **混合输出模式** — 每篇回答输出：内容区截图(独立PNG) + 可搜索 Markdown 文字 + 用户影响力数据
 - **增量更新** — 再次运行只抓新回答，不重复下载。INDEX.md 增量合并
 - **短时缓存** — 30 分钟 TTL 双层缓存（链接列表 + 回答内容），二次运行间隔内跳过网络请求
 - **强制忽略缓存** — 测试用复选框，一键跳过所有缓存+进度，从头重爬
-- **多用户批量** — 支持一次配置多个用户，依次爬取
-- **关键词过滤** — 支持多关键词（逗号/顿号/空格/分号分隔），标题或回答内容含任一关键词即抓取，不区分大小写，`answer_id` 自动去重不重复保存
+- **多用户批量** — 支持一次配置多个用户，依次滚屏
+- **关键词过滤** — 支持多关键词（逗号/顿号/空格/分号分隔），标题或回答内容含任一关键词即保存，不区分大小写，`answer_id` 自动去重不重复保存；属于「输出 MD」阶段的功能
 - **关键词分组管理** — 关键词保存为命名分组（如"蔚来相关"），一键应用；支持从 .txt 文件批量导入；自动记录最近使用的关键词
 - **用户分组管理** — 用户保存为命名分组（如"蔚来黑子"），一键应用/替换/合并；支持从 .txt 文件批量导入；自动记录最近使用的用户组合
 - **已抓取用户列表** — 自动生成 `已抓取用户列表.md`，包含每个用户的基本信息、抓取次数、累计回答数等统计
 - **系统 Chrome** — 支持配置已有 Chrome 路径，无需额外下载 Chromium
-- **测试模式** — 只爬取前 3 条，方便调试
+- **测试模式** — 只滚屏前 3 条链接，方便调试
 
 ## 快速开始
 
@@ -28,10 +40,22 @@
 
 ```bash
 pip install -r requirements.txt
-python gui.py
+python 双击运行.py
 ```
 
-界面提供完整的 ID 列表管理、Cookie 配置、爬取设置和实时日志。
+界面提供完整的 ID 列表管理、Cookie 配置、滚屏/输出MD 两步操作和实时日志。
+
+#### GUI 操作流程
+
+```
+① 添加目标用户 → ② 勾选用户 → ③ 开始滚屏（全量收集链接）
+                                      ↓
+                              ④ 选关键词（可选）
+                                      ↓
+                              ⑤ 从缓存生成 MD
+```
+
+> **三步分离**: 「开始滚屏」「从缓存生成 MD」「手动粘贴链接」三个操作互斥，同一时间只能进行一个。
 
 ### 方式二：命令行
 
@@ -42,10 +66,10 @@ pip install -r requirements.txt
 cp config.example.json config.json
 
 # 直接指定用户运行
-python main.py zhang-jia-wei
+python -m src.main zhang-jia-wei
 
 # 批量爬取
-python main.py zhang-jia-wei liu-bo-wen-27
+python -m src.main zhang-jia-wei liu-bo-wen-27
 ```
 
 ### 登录知乎（三选一）
@@ -109,24 +133,26 @@ output/
 ## 项目结构
 
 ```
-zhihu pa chong/
-├── main.py              # 命令行入口
-├── gui.py               # Tkinter GUI 入口
-├── crawler.py           # 核心爬虫逻辑（滚动加载、回答采集）
-├── auth.py              # 登录认证（扫码/Cookie/storage_state）
-├── converter.py         # HTML → Markdown 转换
-├── storage.py           # 文件存储、进度管理、证据报告
-├── utils.py             # 工具函数（日期提取、文件名清理等）
-├── id_manager.py        # 用户 ID 列表管理
-├── keyword_manager.py    # 关键词分组管理（保存/导入/最近使用）
-├── user_manager.py       # 用户分组管理（保存/导入/最近使用）
-├── config.py            # 配置数据类
+知乎内容抓取/
+├── 双击运行.py          # Tkinter GUI 入口（双击启动）
+├── src/                 # 源码目录
+│   ├── main.py          # 命令行入口
+│   ├── crawler.py       # 核心滚屏 + 回答抓取逻辑
+│   ├── auth.py          # 登录认证（扫码/Cookie/storage_state）
+│   ├── converter.py     # HTML → Markdown 转换
+│   ├── storage.py       # 文件存储、缓存管理、证据报告
+│   ├── utils.py         # 工具函数（日期提取、文件名清理等）
+│   ├── config.py        # 配置数据类
+│   ├── id_manager.py    # 用户 ID 列表管理
+│   ├── keyword_manager.py # 关键词分组管理
+│   ├── user_manager.py  # 用户分组管理
+│   └── log_setup.py     # 日志系统（RotatingFileHandler）
 ├── config.example.json  # 配置文件模板
 ├── config.json          # 用户配置（不入库）
 ├── id_list.json         # ID 列表持久化
-├── keyword_groups.json   # 关键词分组数据
-├── user_groups.json      # 用户分组数据
+├── keyword_groups.json  # 关键词分组数据
 ├── 已抓取用户列表.md     # 自动生成的用户抓取统计报告
+├── 发布文档_知乎内容归档工具.md  # 中文发布说明
 ├── requirements.txt     # Python 依赖
 ├── LICENSE              # MIT License
 └── README.md

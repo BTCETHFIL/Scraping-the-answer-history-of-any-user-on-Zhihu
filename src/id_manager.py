@@ -13,10 +13,12 @@ ID_LIST_FILE = Path(__file__).parent.parent / "id_list.json"
 class UserEntry:
     """单个用户条目"""
     def __init__(self, user_id: str, nickname: str = "",
-                 url: str = "", crawl_history: list = None):
+                 url: str = "", avatar_url: str = "",
+                 crawl_history: list = None):
         self.user_id = user_id
         self.nickname = nickname or user_id
         self.url = url or f"https://www.zhihu.com/people/{user_id}"
+        self.avatar_url = avatar_url
         self.crawl_history = crawl_history or []
 
     def to_dict(self) -> dict:
@@ -24,6 +26,7 @@ class UserEntry:
             'user_id': self.user_id,
             'nickname': self.nickname,
             'url': self.url,
+            'avatar_url': self.avatar_url,
             'crawl_history': self.crawl_history,
         }
 
@@ -33,6 +36,7 @@ class UserEntry:
             user_id=d.get('user_id', ''),
             nickname=d.get('nickname', ''),
             url=d.get('url', ''),
+            avatar_url=d.get('avatar_url', ''),
             crawl_history=d.get('crawl_history', []),
         )
 
@@ -116,6 +120,15 @@ class IDManager:
             return True
         return False
 
+    def update_avatar(self, user_id: str, avatar_url: str) -> bool:
+        """更新头像URL"""
+        u = self.find(user_id)
+        if u:
+            u.avatar_url = avatar_url
+            self.save()
+            return True
+        return False
+
     def get_all_ids(self) -> list[str]:
         """获取所有用户 ID 列表"""
         return [u.user_id for u in self.users]
@@ -194,7 +207,7 @@ class IDManager:
                     total_md_files += len(list(od.glob("*.md")))
 
         lines.append(f"**总用户数**: {total_users} | **已抓取**: {crawled_users} | "
-                     f"**累计抓取回答**: {total_answers} 条 | **现存 MD 文件**: {total_md_files} 个")
+                     f"**已抓取回答**: {total_answers} 条 | **现存 MD 文件**: {total_md_files} 个")
         lines.append("")
 
         # ── 已抓取用户 ──
@@ -202,17 +215,16 @@ class IDManager:
         if crawled_list:
             lines.append("## ✅ 已抓取用户")
             lines.append("")
-            lines.append("| 序号 | 昵称 | 用户ID | 首次抓取 | 最近抓取 | 抓取次数 | 累计回答 | 现存MD |")
-            lines.append("|------|------|--------|----------|----------|----------|----------|--------|")
+            lines.append("| 头像 | 昵称 | 用户ID | 主页 | 最近抓取 | 已抓取回答 |")
+            lines.append("|------|------|--------|------|----------|------------|")
 
             for i, u in enumerate(crawled_list, 1):
                 hist = self.get_crawl_history(u.user_id)
-                first_date = hist[0].get('date', '')[:10] if hist else '-'
                 last_date = hist[-1].get('date', '')[:16] if hist else '-'
-                crawl_count = len(hist)
-                total_ans = sum(r.get('answers_scraped', 0) for r in hist)
+                # 日志记录的回答总数
+                log_ans = sum(r.get('answers_scraped', 0) for r in hist)
 
-                # 扫描现存 MD 数
+                # 本地 MD 文件数（扫描所有历史 output_dir）
                 md_count = 0
                 for h in hist:
                     od = _Path(h.get('output_dir', ''))
@@ -221,10 +233,20 @@ class IDManager:
                     if od.exists():
                         md_count += len(list(od.glob("*.md")))
 
+                # 交叉校验
+                if md_count == log_ans:
+                    ans_display = str(log_ans)
+                else:
+                    missing = max(0, log_ans - md_count)
+                    ans_display = f"{log_ans} / 本地{md_count} ⚠缺{missing}"
+
                 nickname = u.nickname if u.nickname != u.user_id else '-'
+                # 头像列：有则显示缩略图，无则显示占位符
+                avatar_md = f'![:]({u.avatar_url})' if u.avatar_url else '—'
+                url_short = u.url.replace('https://www.zhihu.com/people/', '…/')
                 lines.append(
-                    f"| {i} | {nickname} | `{u.user_id}` | {first_date} | {last_date} | "
-                    f"{crawl_count} | {total_ans} | {md_count} |"
+                    f"| {avatar_md} | {nickname} | `{u.user_id}` | [{url_short}]({u.url}) | "
+                    f"{last_date} | {ans_display} |"
                 )
 
             lines.append("")
@@ -234,45 +256,16 @@ class IDManager:
         if uncrawled:
             lines.append("## ⏳ 待抓取用户")
             lines.append("")
-            lines.append("| 序号 | 昵称 | 用户ID | 主页 |")
+            lines.append("| 头像 | 昵称 | 用户ID | 主页 |")
             lines.append("|------|------|--------|------|")
 
             for i, u in enumerate(uncrawled, 1):
                 nickname = u.nickname if u.nickname != u.user_id else '-'
                 url_short = u.url.replace('https://www.zhihu.com/people/', '…/')
-                lines.append(f"| {i} | {nickname} | `{u.user_id}` | [{url_short}]({u.url}) |")
+                avatar_md = f'![:]({u.avatar_url})' if u.avatar_url else '—'
+                lines.append(f"| {avatar_md} | {nickname} | `{u.user_id}` | [{url_short}]({u.url}) |")
 
             lines.append("")
-
-        # ── 详情 ──
-        if crawled_list:
-            lines.append("---")
-            lines.append("")
-            lines.append("## 📊 抓取详情")
-            lines.append("")
-
-            for u in crawled_list:
-                hist = self.get_crawl_history(u.user_id)
-                nickname = u.nickname if u.nickname != u.user_id else u.user_id
-                total_ans = sum(r.get('answers_scraped', 0) for r in hist)
-                lines.append(f"### {nickname} (`{u.user_id}`)")
-                lines.append("")
-                lines.append(f"- **主页**: [{u.url}]({u.url})")
-                lines.append(f"- **首次抓取**: {hist[0].get('date', '-')}")
-                lines.append(f"- **最近抓取**: {hist[-1].get('date', '-')}")
-                lines.append(f"- **总抓取次数**: {len(hist)} 次")
-                lines.append(f"- **累计抓取回答**: {total_ans} 条")
-                lines.append("")
-
-                # 列出各次抓取
-                lines.append("| 时间 | 抓取条数 | 输出目录 |")
-                lines.append("|------|----------|----------|")
-                for r in hist:
-                    date = r.get('date', '')[:16]
-                    count = r.get('answers_scraped', 0)
-                    od = r.get('output_dir', '').replace('\\', '/')
-                    lines.append(f"| {date} | {count} | `{od}/` |")
-                lines.append("")
 
         return "\n".join(lines)
 

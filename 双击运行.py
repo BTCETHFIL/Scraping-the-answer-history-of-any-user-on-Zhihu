@@ -291,6 +291,9 @@ class ZhihuCrawlerGUI:
         b = ttk.Button(btn_row2, text="🗑 删除", command=self._delete_selected_users, width=8)
         b.pack(side=tk.LEFT, padx=(0, 4))
         ToolTip(b, "从列表中删除选中的用户")
+        b = ttk.Button(btn_row2, text="🧹 清除缓存", command=self._clear_selected_user_cache, width=10)
+        b.pack(side=tk.LEFT, padx=(0, 4))
+        ToolTip(b, "清除选中用户的滚屏缓存（links.json + 回答缓存）\n下次爬取将重新滚屏收集全量回答\n进度文件不受影响")
         b = ttk.Button(btn_row2, text="🔄 刷新列表", command=self._refresh_user_list, width=10)
         b.pack(side=tk.LEFT)
         ToolTip(b, "刷新用户列表，显示最新的爬取历史")
@@ -354,60 +357,18 @@ class ZhihuCrawlerGUI:
         b.pack(side=tk.LEFT, padx=(6, 0))
         ToolTip(b, "清除所有登录状态\n包括 storage_state 和手动 Cookie 文件")
 
-        # ── 爬取设置 ──
-        crawl_frame = ttk.LabelFrame(left_frame, text="爬取设置", padding=6)
+        # ── 爬取（滚屏）设置 ──
+        crawl_frame = ttk.LabelFrame(left_frame, text="爬取（滚屏）— 全量收集回答链接，不生成 MD", padding=6)
         crawl_frame.pack(fill=tk.X, pady=(0, 6))
 
         row1 = ttk.Frame(crawl_frame)
         row1.pack(fill=tk.X, pady=2)
-        ttk.Label(row1, text="最多爬取:", width=10).pack(side=tk.LEFT)
+        ttk.Label(row1, text="最多滚屏:", width=10).pack(side=tk.LEFT)
         self._max_entry = ttk.Entry(row1, width=8)
         self._max_entry.insert(0, "0")
         self._max_entry.pack(side=tk.LEFT)
-        ToolTip(self._max_entry, "每个用户最多爬取的回答条数\n0 = 不限制（爬取全部可见回答）\n测试模式开启时自动设为3条")
+        ToolTip(self._max_entry, "每个用户最多滚屏收集的回答条数\n0 = 不限制（全量收集）\n测试模式开启时自动设为3条")
         ttk.Label(row1, text="（0=全部）", foreground="gray").pack(side=tk.LEFT, padx=4)
-        # 关键词搜索
-        ttk.Label(row1, text="🔍 关键词:", foreground="#4ec9b0").pack(side=tk.LEFT, padx=(16, 0))
-        self._keyword_entry = ttk.Entry(row1, width=20)
-        self._keyword_entry.pack(side=tk.LEFT, padx=2)
-        self._keyword_entry.bind('<Return>', self._on_keyword_enter)
-        ToolTip(self._keyword_entry, "多关键词用逗号、顿号、空格、分号分隔\n如: AI, 人工智能、NLP\n标题或内容含任一关键词即保存\n不区分大小写，answer_id 自动去重\n回车确认并记录到最近使用")
-        ttk.Label(row1, text="（多关键词用逗号分隔，标题/内容含任一即抓取，answer_id 自动去重）", foreground="gray",
-                  font=("", 8)).pack(side=tk.LEFT)
-
-        # ── 关键词分组管理 ──
-        row_kw = ttk.Frame(crawl_frame)
-        row_kw.pack(fill=tk.X, pady=2)
-        ttk.Label(row_kw, text="📂 分组:", foreground="#9cdcfe", font=("", 8)).pack(side=tk.LEFT, padx=(0, 4))
-        self._group_var = tk.StringVar()
-        self._group_combo = ttk.Combobox(row_kw, textvariable=self._group_var,
-                                         width=14, state="readonly")
-        self._group_combo.pack(side=tk.LEFT, padx=2)
-        self._group_combo.bind("<<ComboboxSelected>>", self._on_group_selected)
-        ToolTip(self._group_combo, "选择预设的关键词组，可一键填入\n先在下方管理分组中创建关键词组")
-        b = ttk.Button(row_kw, text="应用分组", command=self._apply_group, width=8)
-        b.pack(side=tk.LEFT, padx=2)
-        ToolTip(b, "将选中分组的关键词填入上方输入框\n如已有内容则替换")
-        b = ttk.Button(row_kw, text="保存为分组…", command=self._save_as_group, width=10)
-        b.pack(side=tk.LEFT, padx=2)
-        ToolTip(b, "将当前输入框的关键词保存为一个分组\n方便下次一键加载")
-        b = ttk.Button(row_kw, text="管理分组…", command=self._manage_groups, width=9)
-        b.pack(side=tk.LEFT, padx=2)
-        ToolTip(b, "查看/编辑/删除已有的关键词分组")
-        b = ttk.Button(row_kw, text="导入文件…", command=self._import_keywords_file, width=9)
-        b.pack(side=tk.LEFT, padx=2)
-        ToolTip(b, "从 .txt 或 .csv 文件批量导入关键词\n支持逗号/换行分隔\n不区分大小写")
-
-        # ── 最近使用关键词 ──
-        row_recent = ttk.Frame(crawl_frame)
-        row_recent.pack(fill=tk.X, pady=1)
-        ttk.Label(row_recent, text="🕐 最近:", foreground="#9cdcfe", font=("", 8)).pack(side=tk.LEFT, padx=(0, 4))
-        self._recent_var = tk.StringVar()
-        self._recent_combo = ttk.Combobox(row_recent, textvariable=self._recent_var,
-                                          width=50, state="readonly")
-        self._recent_combo.pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
-        self._recent_combo.bind("<<ComboboxSelected>>", self._on_recent_selected)
-        ToolTip(self._recent_combo, "最近使用过的关键词\n点击即可快速填入输入框")
 
         row2 = ttk.Frame(crawl_frame)
         row2.pack(fill=tk.X, pady=2)
@@ -434,7 +395,7 @@ class ZhihuCrawlerGUI:
         cb = ttk.Checkbutton(row4, text="🧪 测试模式（只爬3条）", variable=self._test_var,
                         command=self._on_test_toggle)
         cb.pack(side=tk.LEFT, padx=10)
-        ToolTip(cb, "开启后只爬取最多3条回答\n有关键词时：5条/批筛选→标题≥3条即停\n适合测试 Cookie 和配置是否正常")
+        ToolTip(cb, "开启后只滚屏收集最多3条回答链接\n适合测试 Cookie 和配置是否正常")
         self._forensic_var = tk.BooleanVar(value=True)
         cb = ttk.Checkbutton(row4, text="🔒 法务证据（HTML+证据报告+SHA256）", variable=self._forensic_var)
         cb.pack(side=tk.LEFT, padx=10)
@@ -478,14 +439,6 @@ class ZhihuCrawlerGUI:
         ToolTip(self._cache_ttl, "页面缓存有效期（分钟）\n有效期内不会重复请求同一页面\n0 = 禁用缓存，每次都重新请求")
         ttk.Label(row_d1, text="(0=禁用)", foreground="gray").pack(side=tk.LEFT, padx=2)
 
-        row_d4 = ttk.Frame(delay_frame)
-        row_d4.pack(fill=tk.X, pady=(4, 2))
-        self._force_no_cache_var = tk.BooleanVar(value=False)
-        cb = ttk.Checkbutton(row_d4, text="🔄 强制忽略缓存（测试用：跳过所有缓存+进度，从头重爬）",
-                        variable=self._force_no_cache_var)
-        cb.pack(side=tk.LEFT)
-        ToolTip(cb, "忽略所有缓存和爬取进度\n每次从头重新爬取\n适合测试期间使用，正常使用不建议勾选")
-
         # ── 操作控制 ──
         action_frame = ttk.LabelFrame(left_frame, text="操作", padding=6)
         action_frame.pack(fill=tk.X, pady=(8, 0))
@@ -506,20 +459,81 @@ class ZhihuCrawlerGUI:
                                        command=self._resume_crawl, state=tk.DISABLED, width=8)
         self._resume_btn.pack(side=tk.RIGHT, padx=(4, 0))
         ToolTip(self._resume_btn, "从上次停止位置断点续传\n继续爬取未完成的用户")
-        self._start_btn = ttk.Button(ctrl_row, text="▶ 开始爬取",
+        self._start_btn = ttk.Button(ctrl_row, text="▶ 开始滚屏",
                                       command=self._start_crawl, width=14)
         self._start_btn.pack(side=tk.RIGHT)
-        ToolTip(self._start_btn, "开始爬取选中用户的回答\n⚠ 请先在「目标用户」列表中选中用户\n如未选中用户会有提示")
+        ToolTip(self._start_btn, "【仅滚屏收集】全量收集选中用户的回答链接\n不生成 MD 文件，结果存入缓存\n⚠ 请先在「目标用户」列表中选中用户")
 
-        # ── 手动链接保存（独立功能区）──
+        # ── 输出MD ──
         ttk.Separator(left_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(12, 2))
-        ttk.Label(left_frame, text="📋 独立功能：手动粘贴链接保存",
+        ttk.Label(left_frame, text="📋 输出MD — 从缓存生成（可加关键词筛选）",
                   font=("", 9, "bold"), foreground="#888").pack(anchor=tk.W, pady=(0, 2))
 
-        manual_frame = ttk.LabelFrame(left_frame, text="🔗 手动链接保存为 MD（无需预配置用户ID · 每行一条 · 上限100条）", padding=6)
-        manual_frame.pack(fill=tk.X, pady=(0, 6))
+        output_frame = ttk.LabelFrame(left_frame, text="📝 输出 MD 文件", padding=6)
+        output_frame.pack(fill=tk.X, pady=(0, 4))
 
-        self._manual_text = tk.Text(manual_frame, height=4, font=("Consolas", 9),
+        # ── 关键词搜索（移到输出MD区块）──
+        row_kw1 = ttk.Frame(output_frame)
+        row_kw1.pack(fill=tk.X, pady=2)
+        ttk.Label(row_kw1, text="🔍 关键词:", foreground="#4ec9b0").pack(side=tk.LEFT)
+        self._keyword_entry = ttk.Entry(row_kw1, width=22)
+        self._keyword_entry.pack(side=tk.LEFT, padx=2)
+        self._keyword_entry.bind('<Return>', self._on_keyword_enter)
+        ToolTip(self._keyword_entry, "多关键词用逗号、顿号、空格、分号分隔\n如: AI, 人工智能、NLP\n标题或内容含任一关键词即匹配\n不选关键词 = 全量输出所有已缓存回答")
+        ttk.Label(row_kw1, text="（不填=全量输出，填了=关键词筛选）", foreground="gray",
+                  font=("", 8)).pack(side=tk.LEFT)
+
+        # ── 关键词分组管理 ──
+        row_kw2 = ttk.Frame(output_frame)
+        row_kw2.pack(fill=tk.X, pady=2)
+        ttk.Label(row_kw2, text="📂 分组:", foreground="#9cdcfe", font=("", 8)).pack(side=tk.LEFT, padx=(0, 4))
+        self._group_var = tk.StringVar()
+        self._group_combo = ttk.Combobox(row_kw2, textvariable=self._group_var,
+                                         width=14, state="readonly")
+        self._group_combo.pack(side=tk.LEFT, padx=2)
+        self._group_combo.bind("<<ComboboxSelected>>", self._on_group_selected)
+        ToolTip(self._group_combo, "选择预设的关键词组，可一键填入\n先在下方管理分组中创建关键词组")
+        b = ttk.Button(row_kw2, text="应用分组", command=self._apply_group, width=8)
+        b.pack(side=tk.LEFT, padx=2)
+        ToolTip(b, "将选中分组的关键词填入上方输入框\n如已有内容则替换")
+        b = ttk.Button(row_kw2, text="保存为分组…", command=self._save_as_group, width=10)
+        b.pack(side=tk.LEFT, padx=2)
+        ToolTip(b, "将当前输入框的关键词保存为一个分组\n方便下次一键加载")
+        b = ttk.Button(row_kw2, text="管理分组…", command=self._manage_groups, width=9)
+        b.pack(side=tk.LEFT, padx=2)
+        ToolTip(b, "查看/编辑/删除已有的关键词分组")
+        b = ttk.Button(row_kw2, text="导入文件…", command=self._import_keywords_file, width=9)
+        b.pack(side=tk.LEFT, padx=2)
+        ToolTip(b, "从 .txt 或 .csv 文件批量导入关键词\n支持逗号/换行分隔\n不区分大小写")
+
+        # ── 最近使用关键词 ──
+        row_recent = ttk.Frame(output_frame)
+        row_recent.pack(fill=tk.X, pady=1)
+        ttk.Label(row_recent, text="🕐 最近:", foreground="#9cdcfe", font=("", 8)).pack(side=tk.LEFT, padx=(0, 4))
+        self._recent_var = tk.StringVar()
+        self._recent_combo = ttk.Combobox(row_recent, textvariable=self._recent_var,
+                                          width=50, state="readonly")
+        self._recent_combo.pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
+        self._recent_combo.bind("<<ComboboxSelected>>", self._on_recent_selected)
+        ToolTip(self._recent_combo, "最近使用过的关键词\n点击即可快速填入输入框")
+
+        # ── 从缓存生成 MD 按钮 ──
+        ttk.Separator(output_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(6, 4))
+        gen_md_btn_row = ttk.Frame(output_frame)
+        gen_md_btn_row.pack(fill=tk.X, pady=2)
+        self._gen_md_btn = ttk.Button(gen_md_btn_row, text="▶ 从缓存生成 MD",
+                                      command=self._generate_md_from_cache, width=18)
+        self._gen_md_btn.pack(side=tk.LEFT)
+        ToolTip(self._gen_md_btn, "针对选中用户，从滚屏缓存中读取回答链接\n按关键词筛选后逐条抓取并生成 Markdown 文件\n不选关键词 = 全量生成\n需先完成「开始滚屏」才能使用")
+
+        # ── 手动粘贴链接 ──
+        ttk.Separator(output_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(8, 4))
+        ttk.Label(output_frame, text="🔗 手动粘贴链接保存（需预填关键词用于筛选）",
+                  font=("", 8), foreground="#888").pack(anchor=tk.W, pady=(0, 2))
+
+        manual_text_frame = ttk.Frame(output_frame)
+        manual_text_frame.pack(fill=tk.X)
+        self._manual_text = tk.Text(manual_text_frame, height=3, font=("Consolas", 9),
                                      wrap=tk.WORD, fg="gray")
         self._manual_text.insert("1.0", "粘贴知乎回答链接（支持App复制格式：文字+链接）...")
         self._manual_text.bind('<FocusIn>', self._on_manual_focus_in)
@@ -527,7 +541,7 @@ class ZhihuCrawlerGUI:
         self._manual_text.pack(fill=tk.X)
         ToolTip(self._manual_text, "粘贴知乎回答链接，每行一条\n支持 App 复制格式（含文字描述）\n上限 100 条，超出可用导入文件功能分批处理\n格式: https://www.zhihu.com/question/xxx/answer/xxx")
 
-        manual_btn_row = ttk.Frame(manual_frame)
+        manual_btn_row = ttk.Frame(output_frame)
         manual_btn_row.pack(fill=tk.X, pady=(4, 0))
         self._manual_btn = ttk.Button(manual_btn_row, text="📝 批量保存为 MD",
                                       command=self._save_manual_urls, width=16)
@@ -591,6 +605,7 @@ class ZhihuCrawlerGUI:
 
     def _refresh_user_list(self):
         """刷新用户列表显示（Treeview 三列：昵称 / 用户ID / 最近爬取）"""
+        from crawler import get_crawl_status
         for item in self._user_tree.get_children():
             self._user_tree.delete(item)
         mgr = self._get_id_manager()
@@ -600,6 +615,20 @@ class ZhihuCrawlerGUI:
             if history:
                 last = history[-1]
                 hist_info = f"{last['date'][:16]}, {last['answers_scraped']}条"
+            # 追加关键词分组统计
+            try:
+                status = get_crawl_status(user_id, nickname=nickname)
+                groups = status.get('groups_info', {})
+                if groups:
+                    group_parts = []
+                    for kh, info in sorted(groups.items(), key=lambda x: x[1].get('last_run','')):
+                        kws = info.get('keywords', '')
+                        cnt = info.get('count', 0)
+                        group_parts.append(f"{kws}×{cnt}")
+                    if group_parts:
+                        hist_info += f" | {' '.join(group_parts)}"
+            except Exception:
+                pass
             self._user_tree.insert("", tk.END, iid=user_id,
                                     values=(nickname, user_id, hist_info))
         total = len(mgr.users)
@@ -771,6 +800,7 @@ class ZhihuCrawlerGUI:
         self._running = True
         self._start_btn.config(state=tk.DISABLED)
         self._resume_btn.config(state=tk.DISABLED)
+        self._gen_md_btn.config(state=tk.DISABLED)
         self._manual_btn.config(state=tk.DISABLED)
         self._import_btn.config(state=tk.DISABLED)
         self._progress_label.config(text=f"正在批量保存 ({len(urls)}条)...")
@@ -897,6 +927,7 @@ class ZhihuCrawlerGUI:
         self._start_btn.config(state=tk.NORMAL)
         self._manual_btn.config(state=tk.NORMAL)
         self._import_btn.config(state=tk.NORMAL)
+        self._gen_md_btn.config(state=tk.NORMAL)
         self._resume_btn.config(state=tk.DISABLED)
         self._progress_label.config(text="就绪")
         # 自动刷新已抓取用户列表
@@ -966,6 +997,42 @@ class ZhihuCrawlerGUI:
         self._refresh_user_list()
         self._log(f"🗑 已删除 {len(selected)} 个用户", 'info')
 
+    def _clear_selected_user_cache(self):
+        """清除选中用户的滚屏缓存（links.json + 回答内容缓存），保留进度"""
+        selected = self._user_tree.selection()
+        if not selected:
+            messagebox.showinfo("提示", "请先在列表中选中要清除缓存的用户")
+            return
+        nicknames = []
+        for iid in selected:
+            vals = self._user_tree.item(iid, 'values')
+            nicknames.append(vals[0] if vals else iid)
+        names_str = "\n".join(f"  • {n}" for n in nicknames[:5])
+        if len(nicknames) > 5:
+            names_str += f"\n  …共 {len(nicknames)} 个用户"
+        msg = (
+            f"确定清除以下用户的缓存吗？\n\n{names_str}\n\n"
+            f"清除内容：回答列表缓存 + 回答正文缓存\n"
+            f"保留内容：爬取进度文件\n"
+            f"下次爬取时将重新滚屏收集全量回答"
+        )
+        if not messagebox.askyesno("确认清除缓存", msg):
+            return
+        from utils import get_output_path
+        from storage import clear_user_cache
+        total_deleted = 0
+        for iid in selected:
+            vals = self._user_tree.item(iid, 'values')
+            nickname = vals[0] if vals else iid
+            output_dir = get_output_path(self._cfg.output_dir, iid, nickname)
+            deleted = clear_user_cache(output_dir)
+            total_deleted += deleted
+            if deleted > 0:
+                self._log(f"🧹 已清除 {nickname} 缓存（{deleted} 个文件）", 'info')
+            else:
+                self._log(f"ℹ {nickname} 无缓存文件", 'dim')
+        self._log(f"✅ 共清除 {total_deleted} 个缓存文件", 'info')
+
     def _copy_user_link(self):
         """复制选中用户的页面链接到剪贴板"""
         selected = self._user_tree.selection()
@@ -1008,16 +1075,18 @@ class ZhihuCrawlerGUI:
     # ── Cookie 管理 ─────────────────────────────────────
 
     def _check_cookie(self):
-        """检测是否有有效 Cookie"""
+        """检测是否有有效 Cookie，并回填到输入框"""
         cp = get_cookie_path(self._cfg.browser_data_dir)
         sp = get_login_state_path(self._cfg.browser_data_dir)
-        if sp.exists():
-            self._login_status.config(text="🟢 已登录 (storage_state)", foreground="#4ec9b0")
-        elif cp.exists():
+
+        has_storage = sp.exists()
+        has_manual = False
+
+        # 总是尝试加载手动 cookies（即使 storage_state 存在也加载，回填输入框）
+        if cp.exists():
             cookies = load_manual_cookies(cp)
             if cookies:
-                self._login_status.config(text="🟡 有手动 Cookie (待验证)", foreground="#e5b73c")
-                # 回填到输入框（只取 z_c0，显示掩码）
+                has_manual = True
                 for c in cookies:
                     if c.get('name') == 'z_c0':
                         raw = c.get('value', '')
@@ -1025,8 +1094,12 @@ class ZhihuCrawlerGUI:
                         self._z_c0_entry.delete(0, tk.END)
                         self._z_c0_entry.insert(0, self._mask_cookie(raw))
                         break
-            else:
-                self._login_status.config(text="🔴 未登录", foreground="#f44747")
+
+        # 设置登录状态
+        if has_storage:
+            self._login_status.config(text="🟢 已登录 (storage_state)", foreground="#4ec9b0")
+        elif has_manual:
+            self._login_status.config(text="🟡 有手动 Cookie (待验证)", foreground="#e5b73c")
         else:
             self._login_status.config(text="🔴 未登录", foreground="#f44747")
 
@@ -1121,7 +1194,6 @@ class ZhihuCrawlerGUI:
         self._page_max.insert(0, str(int(self._cfg.page_delay_max)))
         self._cache_ttl.delete(0, tk.END)
         self._cache_ttl.insert(0, str(self._cfg.cache_ttl_minutes))
-        self._force_no_cache_var.set(self._cfg.force_no_cache)
         self._on_test_toggle()  # 初始同步「最多爬取」输入框的启用状态
         self._refresh_keyword_ui()  # 刷新关键词分组/最近使用下拉框
         self._refresh_user_group_ui()  # 刷新用户分组下拉框
@@ -1155,7 +1227,7 @@ class ZhihuCrawlerGUI:
         self._cfg.screenshot_mode = True
         self._cfg.test_mode = self._test_var.get()
         self._cfg.forensic_mode = self._forensic_var.get()
-        self._cfg.force_no_cache = self._force_no_cache_var.get()
+        self._cfg.force_no_cache = False  # 已替换为「清除特定用户缓存」按钮
         # 法务模式自动开启 save_html（后台属性，不在 UI 显示）
         if self._cfg.forensic_mode:
             self._cfg.save_html = True
@@ -1632,24 +1704,18 @@ class ZhihuCrawlerGUI:
         self._keyword_entry.insert(0, kw)
 
     def _start_crawl(self):
+        """仅滚屏收集链接（不生成 MD）"""
         if self._running:
-            messagebox.showwarning("提示", "已有爬取任务在运行中")
+            messagebox.showwarning("提示", "已有任务在运行中")
             return
 
         # 有断点时，提示用户是否使用断点续传
         if self._resume_state and self._resume_state.get('user_ids'):
             remaining = self._resume_state['user_ids']
-            resume_keyword = self._resume_state.get('keyword', '')
-            from crawler import _split_keywords
-            rkws = _split_keywords(resume_keyword)
-            resume_kw_display = ', '.join(rkws[:5])
-            if len(rkws) > 5:
-                resume_kw_display += f' …({len(rkws)}个)'
             choice = messagebox.askyesnocancel(
                 "断点续传可用",
-                f"检测到上次未完成的爬取任务：\n\n"
-                f"👤 剩余用户: {len(remaining)} 人\n"
-                f"🔍 关键词: {resume_kw_display if resume_keyword else '（无筛选）'}\n\n"
+                f"检测到上次未完成的滚屏任务：\n\n"
+                f"👤 剩余用户: {len(remaining)} 人\n\n"
                 f"「是」= 断点续传（推荐，无需重新选择）\n"
                 f"「否」= 放弃断点，全新开始\n"
                 f"「取消」= 不做任何操作",
@@ -1669,105 +1735,41 @@ class ZhihuCrawlerGUI:
         selected_iids = self._user_tree.selection()
         if not selected_iids:
             messagebox.showwarning("提示",
-                "请先在「目标用户」列表中选中要爬取的用户\n\n"
+                "请先在「目标用户」列表中选中要滚屏的用户\n\n"
                 "如果列表为空，请在上方输入 URL 后点击「添加到列表」")
             return
 
-        # iid 就是 user_id
         user_ids = list(selected_iids)
-
         if not user_ids:
             messagebox.showwarning("提示", "无法解析选中的用户 ID")
             return
 
-        # ── 预检查：检测本地文件缺失 ──
-        force_recrawl_map = {}  # user_id → set of answer_ids to re-crawl
-        from crawler import get_crawl_status
-
-        for uid in user_ids:
-            try:
-                status = get_crawl_status(uid)
-            except Exception:
-                continue
-
-            if status['missing_count'] > 0:
-                # 有爬取记录但本地文件缺失
-                missing_list = []
-                for aid, detail in status['missing_details'].items():
-                    fname = detail.get('filename', '?')
-                    missing_list.append(f"  • [{aid[:8]}...] {fname}")
-
-                msg = (
-                    f"⚠ 用户 {uid} 的爬取记录中有 {status['missing_count']} 条回答"
-                    f"的本地文件缺失（共 {status['total_progress']} 条记录）：\n\n"
-                    + '\n'.join(missing_list[:10])
-                )
-                if len(missing_list) > 10:
-                    msg += f"\n  ... 等共 {len(missing_list)} 条"
-
-                msg += "\n\n如何处理这些缺失的回答？"
-
-                choice = messagebox.askquestion(
-                    f"文件缺失 — {uid}",
-                    msg + "\n\n「是」= 重新爬取缺失的\n「否」= 跳过",
-                    icon='warning'
-                )
-
-                if choice == 'yes':
-                    force_recrawl_map[uid] = status['missing_ids']
-                    self._log(f"🔄 {uid}: 将重新爬取 {len(status['missing_ids'])} 条缺失文件", 'warn')
-                else:
-                    self._log(f"⏭ {uid}: 跳过 {len(status['missing_ids'])} 条缺失文件", 'info')
-
-        # 读取关键词（提前，测试模式需要判断）
-        keyword = self._keyword_entry.get().strip()
-        # 记录到最近使用列表
-        if keyword:
-            keyword_mgr.add_recent(keyword)
-            self._refresh_keyword_ui()
-
         # ── 确认弹窗 ──
-        from crawler import _split_keywords
-        kws = _split_keywords(keyword)
-        filter_info = f"🔍 关键词筛选：{len(kws)}个 → {', '.join(kws[:8])}"
-        if len(kws) > 8:
-            filter_info += f" …(共{len(kws)}个)"
-        if not keyword:
-            filter_info = "⚠ 未设置关键词，将抓取全部回答（无筛选）"
         confirm_msg = (
-            f"确认开始爬取？\n\n"
+            f"确认开始滚屏？\n\n"
             f"👤 目标用户: {len(user_ids)}人\n"
-            f"{filter_info}\n"
-            f"📊 最多爬取: {'全部' if self._cfg.max_answers == 0 else self._cfg.max_answers} 条/人"
+            f"📊 滚屏收集: {'全部' if self._cfg.max_answers == 0 else self._cfg.max_answers} 条/人\n\n"
+            f"💡 滚屏只收集回答链接到缓存，不生成 MD 文件\n"
+            f"   完成后请在下方「输出MD」区选择关键词并生成 MD"
         )
         if self._cfg.test_mode:
             confirm_msg += "\n🧪 测试模式: 开启"
-        if not messagebox.askyesno("确认爬取", confirm_msg, parent=self.root):
-            self._log("⚠ 用户取消爬取", "warn")
+        if not messagebox.askyesno("确认滚屏", confirm_msg, parent=self.root):
+            self._log("⚠ 用户取消滚屏", "warn")
             return
 
         # 清空旧断点状态
         self._resume_state = None
 
-        # ── 启动爬取 ──
+        # ── 启动滚屏 ──
         self._log(f"\n{'='*55}", 'dim')
-        self._log(f"🎯 目标用户: {', '.join(user_ids)}", 'info')
+        self._log(f"🎯 滚屏目标: {', '.join(user_ids)}", 'info')
         if self._cfg.test_mode:
-            if keyword:
-                self._log(f"🧪 测试模式: 开启（5条/批筛选→标题匹配≥3条即停→至多爬3条）", 'info')
-            else:
-                self._log(f"🧪 测试模式: 开启（只爬3条）", 'info')
+            self._log(f"🧪 测试模式: 开启（只滚3条）", 'info')
         else:
-            self._log(f"📊 最多爬取: {'全部' if self._cfg.max_answers == 0 else self._cfg.max_answers} 条/人", 'info')
-        self._log(f"🎯 输出模式: 混合模式（截图 + 文字 + base64图片嵌入）", 'info')
+            self._log(f"📊 滚屏上限: {'全部' if self._cfg.max_answers == 0 else self._cfg.max_answers} 条/人", 'info')
         self._log(f"👁 无头模式: {'是' if self._cfg.headless else '否'}", 'info')
-        self._log(f"🔒 法务证据模式: {'是（HTML + 证据报告 + SHA256）' if self._cfg.forensic_mode else '否'}", 'info')
-        if self._cfg.force_no_cache:
-            self._log(f"🔄 强制忽略缓存: 开启（跳过所有缓存+进度）", 'info')
         self._log(f"{'='*55}\n", 'dim')
-
-        if keyword:
-            self._log(f"🔍 关键词过滤: 「{keyword}」", 'info')
 
         # 检查 Chrome
         if self._cfg.chrome_exe and not Path(self._cfg.chrome_exe).exists():
@@ -1779,14 +1781,94 @@ class ZhihuCrawlerGUI:
         self._stop_event.clear()
         self._start_btn.config(state=tk.DISABLED)
         self._resume_btn.config(state=tk.DISABLED)
+        self._gen_md_btn.config(state=tk.DISABLED)
+        self._manual_btn.config(state=tk.DISABLED)
         self._stop_btn.config(state=tk.NORMAL)
         self._progress['value'] = 0
         self._progress_label.config(text="正在启动浏览器...")
 
-        # 后台线程
+        # 后台线程（仅滚屏，不生成 MD）
         self._crawler_thread = threading.Thread(
             target=self._crawl_thread,
-            args=(user_ids, force_recrawl_map, keyword),
+            args=(user_ids, {}, "", True),  # force_recrawl_map={}, keyword="", scroll_only=True
+            daemon=True
+        )
+        self._crawler_thread.start()
+
+    def _generate_md_from_cache(self):
+        """从缓存生成 MD（支持关键词筛选）"""
+        if self._running:
+            messagebox.showwarning("提示", "已有任务在运行中")
+            return
+
+        selected_iids = self._user_tree.selection()
+        if not selected_iids:
+            messagebox.showwarning("提示",
+                "请先在「目标用户」列表中选中要生成 MD 的用户\n\n"
+                "如果列表为空，请先完成「开始滚屏」再使用此功能")
+            return
+
+        user_ids = list(selected_iids)
+        keyword = self._keyword_entry.get().strip()
+
+        # 记录关键词到最近使用
+        if keyword:
+            keyword_mgr.add_recent(keyword)
+            self._refresh_keyword_ui()
+
+        # ── 确认弹窗 ──
+        from crawler import _split_keywords
+        kws = _split_keywords(keyword)
+        filter_info = f"🔍 关键词筛选：{len(kws)}个 → {', '.join(kws[:8])}"
+        if len(kws) > 8:
+            filter_info += f" …(共{len(kws)}个)"
+        if not keyword:
+            filter_info = "⚠ 未设置关键词，将生成全部已缓存回答的 MD"
+
+        confirm_msg = (
+            f"确认生成 MD？\n\n"
+            f"👤 目标用户: {len(user_ids)}人\n"
+            f"{filter_info}\n\n"
+            f"💡 将读取滚屏缓存中的回答链接\n"
+            f"   按关键词筛选后逐条抓取并生成 Markdown"
+        )
+        if not messagebox.askyesno("确认生成 MD", confirm_msg, parent=self.root):
+            self._log("⚠ 用户取消生成 MD", "warn")
+            return
+
+        self._read_config_from_ui()
+
+        # ── 启动 ──
+        self._log(f"\n{'='*55}", 'dim')
+        self._log(f"📝 生成 MD: {', '.join(user_ids)}", 'info')
+        if keyword:
+            self._log(f"🔍 关键词过滤: 「{keyword}」", 'info')
+        else:
+            self._log(f"🔍 无关键词筛选，全量生成", 'info')
+        self._log(f"👁 无头模式: {'是' if self._cfg.headless else '否'}", 'info')
+        self._log(f"🔒 法务证据: {'是' if self._cfg.forensic_mode else '否'}", 'info')
+        self._log(f"{'='*55}\n", 'dim')
+
+        # 检查 Chrome
+        if self._cfg.chrome_exe and not Path(self._cfg.chrome_exe).exists():
+            self._log(f"⚠ Chrome 路径不存在: {self._cfg.chrome_exe}", 'warn')
+
+        # 状态切换
+        self._running = True
+        self._stop_flag = False
+        self._stop_event.clear()
+        self._start_btn.config(state=tk.DISABLED)
+        self._resume_btn.config(state=tk.DISABLED)
+        self._gen_md_btn.config(state=tk.DISABLED)
+        self._manual_btn.config(state=tk.DISABLED)
+        self._stop_btn.config(state=tk.NORMAL)
+        self._progress['value'] = 0
+        self._progress_label.config(text="正在启动浏览器...")
+
+        # 后台线程（生成 MD，不滚屏）
+        self._crawler_thread = threading.Thread(
+            target=self._crawl_thread,
+            args=(user_ids, {}, keyword, False),  # force_recrawl_map={}, keyword, scroll_only=False
             daemon=True
         )
         self._crawler_thread.start()
@@ -1800,39 +1882,29 @@ class ZhihuCrawlerGUI:
         self._stop_btn.config(state=tk.DISABLED)
 
     def _resume_crawl(self):
-        """断点续传：从上次停止位置继续爬取"""
+        """断点续传：从上次停止位置继续滚屏"""
         if not self._resume_state or not self._resume_state.get('user_ids'):
             messagebox.showwarning("提示", "没有可继续的断点")
             return
         if self._running:
-            messagebox.showwarning("提示", "已有爬取任务在运行中")
+            messagebox.showwarning("提示", "已有任务在运行中")
             return
 
         state = self._resume_state
         remaining = state['user_ids']
-        keyword = state.get('keyword', '')
         force_recrawl_map = state.get('force_recrawl_map', {})
 
         # 确认弹窗
-        from crawler import _split_keywords
-        kws = _split_keywords(keyword)
-        filter_info = f"🔍 关键词筛选：{len(kws)}个 → {', '.join(kws[:8])}"
-        if len(kws) > 8:
-            filter_info += f" …(共{len(kws)}个)"
-        if not keyword:
-            filter_info = "⚠ 未设置关键词，将抓取全部回答（无筛选）"
         confirm_msg = (
-            f"确认断点续传？\n\n"
-            f"👤 剩余用户: {len(remaining)}人\n"
-            f"{filter_info}\n\n"
-            f"💡 将使用停止时的关键词配置（非UI当前值）"
+            f"确认断点续传（滚屏）？\n\n"
+            f"👤 剩余用户: {len(remaining)}人"
         )
         if not messagebox.askyesno("确认断点续传", confirm_msg, parent=self.root):
             self._log("⚠ 用户取消断点续传", "warn")
             return
 
         self._log(f"\n{'='*55}", 'dim')
-        self._log(f"🔄 断点续传: 剩余 {len(remaining)} 人", 'info')
+        self._log(f"🔄 断点续传（滚屏）: 剩余 {len(remaining)} 人", 'info')
         self._log(f"{'='*55}\n", 'dim')
 
         # 状态切换
@@ -1841,20 +1913,22 @@ class ZhihuCrawlerGUI:
         self._stop_event.clear()
         self._start_btn.config(state=tk.DISABLED)
         self._resume_btn.config(state=tk.DISABLED)
+        self._gen_md_btn.config(state=tk.DISABLED)
+        self._manual_btn.config(state=tk.DISABLED)
         self._stop_btn.config(state=tk.NORMAL)
         self._progress['value'] = 0
-        self._progress_label.config(text=f"继续爬取 ({len(remaining)} 人)...")
+        self._progress_label.config(text=f"继续滚屏 ({len(remaining)} 人)...")
 
         self._crawler_thread = threading.Thread(
             target=self._crawl_thread,
-            args=(list(remaining), force_recrawl_map, keyword),
+            args=(list(remaining), force_recrawl_map, "", True),  # keyword="", scroll_only=True
             daemon=True
         )
         self._crawler_thread.start()
 
     def _crawl_thread(self, user_ids: list, force_recrawl_map: dict = None,
-                      keyword: str = ""):
-        """后台爬取线程"""
+                      keyword: str = "", scroll_only: bool = True):
+        """后台任务线程（滚屏 or 生成 MD）"""
         import time as _time
         from playwright.sync_api import sync_playwright
         from auth import ensure_login, get_login_state_path
@@ -1915,7 +1989,8 @@ class ZhihuCrawlerGUI:
                     browser.close()
                     return
 
-                # 爬取
+                # 任务执行
+                label_prefix = "滚屏" if scroll_only else "生成MD"
                 results = []
                 force_recrawl_map = force_recrawl_map or {}
                 for i, uid in enumerate(user_ids):
@@ -1930,12 +2005,13 @@ class ZhihuCrawlerGUI:
                         self._log(f"⚠ 用户手动停止（剩余 {len(remaining)} 人可断点续传）", 'warn')
                         break
                     self.root.after(0, lambda u=uid: self._progress_label.config(
-                        text=f"正在爬取: {u}"))
+                        text=f"正在{label_prefix}: {u}"))
                     try:
                         force_ids = force_recrawl_map.get(uid, set())
                         r = crawl_user_answers(page, uid, force_recrawl_ids=force_ids,
                                               stop_event=self._stop_event,
-                                              keyword=keyword)
+                                              keyword=keyword,
+                                              scroll_only=scroll_only)
                         results.append(r)
                         # 记录爬取历史
                         from id_manager import get_id_manager
@@ -1946,7 +2022,7 @@ class ZhihuCrawlerGUI:
                             r.get('output_dir', str(Path(self._cfg.output_dir) / uid))
                         )
                     except Exception as e:
-                        self.root.after(0, self._log, f"爬取 {uid} 失败: {e}", 'error')
+                        self.root.after(0, self._log, f"{label_prefix} {uid} 失败: {e}", 'error')
                         import traceback
                         traceback.print_exc()
                     # 更新进度条
@@ -1957,11 +2033,19 @@ class ZhihuCrawlerGUI:
                 total_success = sum(r.get('success', 0) for r in results)
                 total_failed = sum(r.get('failed', 0) for r in results)
                 total_skip = sum(r.get('skipped', 0) for r in results)
+                total_collected = sum(r.get('collected', 0) for r in results)
+                total_pending = sum(r.get('pending', 0) for r in results)
                 self._log(f"\n{'='*55}", 'dim')
-                self._log("全部完成！汇总：", 'success')
-                self._log(f"   爬取成功: {total_success} 条", 'success')
-                self._log(f"   爬取失败: {total_failed} 条", 'error')
-                self._log(f"   跳过重复: {total_skip} 条", 'info')
+                self._log(f"全部完成！{label_prefix}汇总：", 'success')
+                if scroll_only:
+                    if total_collected > 0:
+                        self._log(f"   收集链接: {total_collected} 条", 'success')
+                    if total_pending > 0:
+                        self._log(f"   待生成MD: {total_pending} 条", 'info')
+                else:
+                    self._log(f"   生成成功: {total_success} 条", 'success')
+                    self._log(f"   生成失败: {total_failed} 条", 'error')
+                self._log(f"   跳过已完成: {total_skip} 条", 'info')
                 self._log(f"   输出目录: {Path(self._cfg.output_dir).resolve()}", 'info')
 
                 # 刷新 ID 列表的爬取历史显示
@@ -1979,14 +2063,13 @@ class ZhihuCrawlerGUI:
             self.root.after(0, self._on_crawl_done)
 
     def _on_crawl_done(self):
-        """爬取完成后的 UI 恢复"""
+        """任务完成后的 UI 恢复"""
         self._start_btn.config(state=tk.NORMAL)
+        self._gen_md_btn.config(state=tk.NORMAL)
+        self._manual_btn.config(state=tk.NORMAL)
         self._stop_btn.config(state=tk.DISABLED)
         # 有断点状态时启用「继续」按钮
-        # 额外检查：如果 _stop_flag 为 True（被用户手动停止），即使 _resume_state 未构建
-        # （边缘情况），也尝试从当前 user_ids 构建断点
         if self._stop_flag and (not self._resume_state or not self._resume_state.get('user_ids')):
-            # 边缘情况兜底：被停止但没有断点记录，尝试从最近一次爬取的 user_ids 恢复
             self._log("⚠ 检测到手动停止但断点状态异常，尝试自动恢复...", 'warn')
 
         has_resume = self._resume_state and self._resume_state.get('user_ids')

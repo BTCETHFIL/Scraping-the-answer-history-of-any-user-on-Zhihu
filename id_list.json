@@ -4,6 +4,7 @@
       "user_id": "44-41-80-77",
       "nickname": "祈祈",
       "url": "https://www.zhihu.com/people/44-41-80-77",
+      "avatar_url": "https://pica.zhimg.com/v2-3c303a8adc44ce34c013f7b9d9322b26_l.jpg?source=32738c0c&needBackground=1",
       "crawl_history": [
         {
           "date": "2026-06-19 06:25:29",
@@ -29,6 +30,21 @@
           "date": "2026-06-20 17:00:23",
           "answers_scraped": 3,
           "output_dir": "output\\祈祈_44-41-80-77"
+        },
+        {
+          "date": "2026-06-20 19:43:18",
+          "answers_scraped": 0,
+          "output_dir": "output\\祈祈_44-41-80-77"
+        },
+        {
+          "date": "2026-06-20 20:02:12",
+          "answers_scraped": 2,
+          "output_dir": "output\\祈祈_44-41-80-77"
+        },
+        {
+          "date": "2026-06-20 20:31:41",
+          "answers_scraped": 0,
+          "output_dir": "output\\祈祈_44-41-80-77"
         }
       ]
     },
@@ -36,11 +52,17 @@
       "user_id": "magiculture",
       "nickname": "magiculture",
       "url": "https://www.zhihu.com/people/magiculture",
+      "avatar_url": "https://pica.zhimg.com/v2-abed1a8c04700ba7d72b45195223e0ff_l.jpg?source=32738c0c&needBackground=1",
       "crawl_history": [
         {
           "date": "2026-06-19 09:14:04",
           "answers_scraped": 3,
           "output_dir": "output\\magiculture"
+        },
+        {
+          "date": "2026-06-20 20:33:03",
+          "answers_scraped": 1,
+          "output_dir": "output\\Magiculture自由_magiculture"
         }
       ]
     },
@@ -48,6 +70,7 @@
       "user_id": "lu-guo-63-72-64",
       "nickname": "晓看天色暮看云",
       "url": "https://www.zhihu.com/people/lu-guo-63-72-64",
+      "avatar_url": "",
       "crawl_history": [
         {
           "date": "2026-06-19 09:21:12",
@@ -88,6 +111,11 @@
           "date": "2026-06-20 19:12:27",
           "answers_scraped": 1,
           "output_dir": "output\\晓看天色暮看云​走走看看，就是人生_lu-guo-63-72-64"
+        },
+        {
+          "date": "2026-06-20 19:25:12",
+          "answers_scraped": 4,
+          "output_dir": "output\\晓看天色暮看云​走走看看，就是人生_lu-guo-63-72-64"
         }
       ]
     },
@@ -95,6 +123,7 @@
       "user_id": "luo-bo-te-6",
       "nickname": "罗伯特",
       "url": "https://www.zhihu.com/people/luo-bo-te-6",
+      "avatar_url": "",
       "crawl_history": [
         {
           "date": "2026-06-20 18:09:17",
@@ -107,54 +136,69 @@
       "user_id": "wu-you-86-68",
       "nickname": "无幽",
       "url": "https://www.zhihu.com/people/wu-you-86-68",
-      "crawl_history": []
+      "avatar_url": "",
+      "crawl_history": [
+        {
+          "date": "2026-06-20 19:30:38",
+          "answers_scraped": 10,
+          "output_dir": "output\\无幽​_wu-you-86-68"
+        }
+      ]
     },
     {
       "user_id": "Mr.Samuel",
       "nickname": "Mr.Samuel",
       "url": "https://www.zhihu.com/people/Mr.Samuel",
+      "avatar_url": "",
       "crawl_history": []
     },
     {
       "user_id": "xiong-qia-67",
       "nickname": "熊卡",
       "url": "https://www.zhihu.com/people/xiong-qia-67",
+      "avatar_url": "",
       "crawl_history": []
     },
     {
       "user_id": "xiao-f-45-5",
       "nickname": "小F",
       "url": "https://www.zhihu.com/people/xiao-f-45-5",
+      "avatar_url": "",
       "crawl_history": []
     },
     {
       "user_id": "tian-liang-yao-xi-lian",
       "nickname": "知乎乱弹琴",
       "url": "https://www.zhihu.com/people/tian-liang-yao-xi-lian",
+      "avatar_url": "",
       "crawl_history": []
     },
     {
       "user_id": "tang-feng-88-54",
       "nickname": "NoxtanG",
       "url": "https://www.zhihu.com/people/tang-feng-88-54",
+      "avatar_url": "",
       "crawl_history": []
     },
     {
       "user_id": "qing-huan-52-98",
       "nickname": "清欢",
       "url": "https://www.zhihu.com/people/qing-huan-52-98",
+      "avatar_url": "",
       "crawl_history": []
     },
     {
       "user_id": "jjjjjj-12-85",
       "nickname": "jjjjjj",
       "url": "https://www.zhihu.com/people/jjjjjj-12-85",
+      "avatar_url": "",
       "crawl_history": []
     },
     {
       "user_id": "mig25",
       "nickname": "米格25",
       "url": "https://www.zhihu.com/people/mig25",
+      "avatar_url": "",
       "crawl_history": [
         {
           "date": "2026-06-19 11:50:13",
@@ -167,32 +211,37 @@
       "user_id": "chen-xiao-87-91",
       "nickname": "chen xiao",
       "url": "https://www.zhihu.com/people/chen-xiao-87-91",
+      "avatar_url": "",
       "crawl_history": []
     },
     {
       "user_id": "ppgg-68",
       "nickname": "ppgg",
       "url": "https://www.zhihu.com/people/ppgg-68",
+      "avatar_url": "",
       "crawl_history": []
     },
     {
       "user_id": "gong-xiao-yu-55",
       "nickname": "龚小雨",
       "url": "https://www.zhihu.com/people/gong-xiao-yu-55",
+      "avatar_url": "",
       "crawl_history": []
     },
     {
       "user_id": "dang-zheng-50",
       "nickname": "dang-zheng-50",
       "url": "https://www.zhihu.com/people/dang-zheng-50",
+      "avatar_url": "",
       "crawl_history": []
     },
     {
       "user_id": "wu-liang-jun-25",
       "nickname": "巫凉菌",
       "url": "https://www.zhihu.com/people/wu-liang-jun-25",
+      "avatar_url": "",
       "crawl_history": []
     }
   ],
-  "updated": "2026-06-20 19:12:27"
+  "updated": "2026-06-20 20:39:29"
 }
