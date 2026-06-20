@@ -66,20 +66,4 @@ def log_print(*args, level: str = "info", **kwargs):
             _file_logger.info(msg.rstrip())
 
 
-def get_logger(name: str = "zhihu") -> logging.Logger:
-    """获取日志器（自动初始化）"""
-    init_logging()
-    logger = logging.getLogger(name)
-    logger.propagate = False  # 不传播到 root
-    # 添加文件 handler
-    fh = RotatingFileHandler(
-        str(LOG_FILE), maxBytes=MAX_BYTES, backupCount=BACKUP_COUNT,
-        encoding='utf-8'
-    )
-    fh.setLevel(logging.INFO)
-    fh.setFormatter(logging.Formatter(
-        '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    ))
-    logger.addHandler(fh)
-    return logger
+
