@@ -662,7 +662,13 @@ class ZhihuCrawlerGUI:
                 self._user_tree.see(user_id)
             self._log(f"✅ 已添加用户: {user_id}", 'success')
         else:
-            messagebox.showinfo("已存在", f"用户 {user_id} 已在列表中")
+            # 用户已存在 → 高亮选中，方便查看/编辑昵称
+            if self._user_tree.exists(user_id):
+                self._user_tree.selection_set(user_id)
+                self._user_tree.see(user_id)
+                self._user_tree.focus(user_id)
+            self._list_status.config(text=f"用户 {user_id} 已在列表中（已高亮）")
+            self._log(f"⚠ 用户已存在: {user_id}（已高亮定位）", 'warning')
 
     def _on_quick_add_focus_in(self, event):
         if self._quick_add_entry.get() == "输入用户主页URL或用户ID...":
@@ -1062,7 +1068,7 @@ class ZhihuCrawlerGUI:
         self._log(f"🏠 已在浏览器中打开: {url}", 'info')
 
     def _edit_nickname(self, event=None):
-        """编辑选中用户的昵称"""
+        """编辑选中用户的昵称（同时重命名已有文件夹）"""
         selected = self._user_tree.selection()
         if not selected:
             return
@@ -1073,15 +1079,38 @@ class ZhihuCrawlerGUI:
             return
 
         from tkinter import simpledialog
+        from utils import get_user_dirname
+        old_nickname = user.nickname
         new_nick = simpledialog.askstring(
             "编辑昵称",
             f"用户 ID: {user_id}\n输入新昵称:",
-            initialvalue=user.nickname
+            initialvalue=old_nickname
         )
         if new_nick and new_nick.strip():
-            mgr.update_nickname(user_id, new_nick.strip())
+            new_nickname = new_nick.strip()
+            mgr.update_nickname(user_id, new_nickname)
             self._refresh_user_list()
-            self._log(f"✏ {user_id} → {new_nick.strip()}", 'info')
+            # 重命名已有的输出目录和缓存目录
+            old_dirname = get_user_dirname(user_id, old_nickname)
+            new_dirname = get_user_dirname(user_id, new_nickname)
+            if old_dirname != new_dirname:
+                import shutil
+                renamed = 0
+                for parent in [Path(self._cfg.output_dir), Path(self._cfg.cache_dir)]:
+                    old_path = parent / old_dirname
+                    new_path = parent / new_dirname
+                    if old_path.exists() and not new_path.exists():
+                        try:
+                            shutil.move(str(old_path), str(new_path))
+                            renamed += 1
+                            self._log(f"📁 已重命名: {old_path.name} → {new_path.name}", 'info')
+                        except Exception as e:
+                            self._log(f"⚠ 重命名失败: {old_path.name} ({e})", 'error')
+                if renamed:
+                    self._list_status.config(
+                        text=f"昵称已更新，{renamed} 个文件夹已同步重命名"
+                    )
+            self._log(f"✏ {user_id}: {old_nickname} → {new_nickname}", 'info')
 
     # ── Cookie 管理 ─────────────────────────────────────
 

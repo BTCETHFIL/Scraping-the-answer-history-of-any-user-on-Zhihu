@@ -191,15 +191,17 @@ def extract_date_from_html(html_or_soup) -> str:
     return ''
 
 
-def get_output_path(output_dir: str, user_id: str, nickname: str = "") -> Path:
-    """获取用户的输出目录，如有昵称则加入目录名便于识别"""
-    # 构建目录名：{nickname}_{user_id} 或 {user_id}
+def get_user_dirname(user_id: str, nickname: str = "") -> str:
+    """返回用户目录名（不含父路径）：{nickname}_{user_id} 或 {user_id}"""
     if nickname and nickname != user_id:
         safe_nickname = sanitize_filename(nickname, 30)
-        dirname = f"{safe_nickname}_{user_id}"
-    else:
-        dirname = user_id
+        return f"{safe_nickname}_{user_id}"
+    return user_id
 
+
+def get_output_path(output_dir: str, user_id: str, nickname: str = "") -> Path:
+    """获取用户的输出目录，如有昵称则加入目录名便于识别"""
+    dirname = get_user_dirname(user_id, nickname)
     p = Path(output_dir) / dirname
 
     # 迁移：如果旧目录 {user_id} 存在，将内容移入新目录
