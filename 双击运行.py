@@ -8,6 +8,7 @@ import io
 import json
 import re
 import threading
+import webbrowser
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext, filedialog
 from pathlib import Path
@@ -285,9 +286,9 @@ class ZhihuCrawlerGUI:
         b = ttk.Button(btn_row2, text="✏ 编辑昵称", command=self._edit_nickname, width=10)
         b.pack(side=tk.LEFT, padx=(0, 4))
         ToolTip(b, "修改选中用户的显示昵称\n双击列表项也可编辑")
-        b = ttk.Button(btn_row2, text="📋 复制链接", command=self._copy_user_link, width=10)
+        b = ttk.Button(btn_row2, text="🏠 访问主页", command=self._visit_user_homepage, width=10)
         b.pack(side=tk.LEFT, padx=(0, 4))
-        ToolTip(b, "复制选中用户的知乎主页链接到剪贴板")
+        ToolTip(b, "在浏览器中打开选中用户的知乎主页")
         b = ttk.Button(btn_row2, text="🗑 删除", command=self._delete_selected_users, width=8)
         b.pack(side=tk.LEFT, padx=(0, 4))
         ToolTip(b, "从列表中删除选中的用户")
@@ -1028,8 +1029,8 @@ class ZhihuCrawlerGUI:
                 self._log(f"ℹ {nickname} 无缓存文件", 'dim')
         self._log(f"✅ 共清除 {total_deleted} 个缓存文件", 'info')
 
-    def _copy_user_link(self):
-        """复制选中用户的页面链接到剪贴板"""
+    def _visit_user_homepage(self):
+        """在浏览器中打开选中用户的知乎主页"""
         selected = self._user_tree.selection()
         if not selected:
             messagebox.showinfo("提示", "请先在列表中选中一个用户")
@@ -1040,10 +1041,9 @@ class ZhihuCrawlerGUI:
         if not user:
             return
         url = user.url or f"https://www.zhihu.com/people/{user_id}"
-        self.root.clipboard_clear()
-        self.root.clipboard_append(url)
-        self._list_status.config(text=f"已复制: {url}")
-        self._log(f"📋 已复制到剪贴板: {url}", 'info')
+        webbrowser.open(url)
+        self._list_status.config(text=f"已打开: {url}")
+        self._log(f"🏠 已在浏览器中打开: {url}", 'info')
 
     def _edit_nickname(self, event=None):
         """编辑选中用户的昵称"""
