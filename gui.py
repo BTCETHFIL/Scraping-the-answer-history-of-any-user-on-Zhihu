@@ -117,12 +117,13 @@ class ZhihuCrawlerGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("知乎回答爬虫 v1.0")
-        self.root.geometry("880x700")
-        self.root.minsize(780, 580)
+        self.root.geometry("880x820")
+        self.root.minsize(780, 620)
         self._running = False
         self._stop_flag = False
         self._stop_event = threading.Event()
         self._crawler_thread = None
+        self._raw_z_c0 = ""  # 完整cookie值（Entry显示掩码）
 
         # 加载配置
         self._cfg = Config.from_file()
@@ -204,8 +205,11 @@ class ZhihuCrawlerGUI:
         cookie_frame = ttk.LabelFrame(left_frame, text="登录 Cookie", padding=6)
         cookie_frame.pack(fill=tk.X, pady=(0, 6))
         ttk.Label(cookie_frame, text="z_c0:  (知乎关键登录 Cookie)").pack(anchor=tk.W)
-        self._z_c0_entry = ttk.Entry(cookie_frame, show="*", width=50)
+        self._z_c0_entry = ttk.Entry(cookie_frame, width=50)
         self._z_c0_entry.pack(fill=tk.X, pady=(2, 0))
+        self._z_c0_entry.bind('<FocusIn>', self._on_cookie_focus_in)
+        self._z_c0_entry.bind('<FocusOut>', self._on_cookie_focus_out)
+
         btn_row = ttk.Frame(cookie_frame)
         btn_row.pack(fill=tk.X, pady=(4, 0))
         ttk.Button(btn_row, text="保存 Cookie", command=self._save_cookies).pack(side=tk.LEFT, padx=(0, 6))
@@ -251,11 +255,6 @@ class ZhihuCrawlerGUI:
         ttk.Checkbutton(row4, text="🧪 测试模式（只爬3条）", variable=self._test_var,
                         command=self._on_test_toggle).pack(side=tk.LEFT, padx=15)
 
-        row5 = ttk.Frame(crawl_frame)
-        row5.pack(fill=tk.X, pady=2)
-        ttk.Label(row5, text="🎯 输出模式：混合模式（截图 + 文字 + base64图片嵌入）",
-                  foreground="#4ec9b0", font=("", 9)).pack(side=tk.LEFT)
-
         row6 = ttk.Frame(crawl_frame)
         row6.pack(fill=tk.X, pady=2)
         self._forensic_var = tk.BooleanVar(value=True)
@@ -272,36 +271,36 @@ class ZhihuCrawlerGUI:
         delay_frame.pack(fill=tk.X, pady=(0, 6))
         row_d1 = ttk.Frame(delay_frame)
         row_d1.pack(fill=tk.X, pady=2)
-        ttk.Label(row_d1, text="滚动间隔:", width=10).pack(side=tk.LEFT)
-        self._scroll_min = ttk.Entry(row_d1, width=5)
+
+        # 滚动间隔
+        ttk.Label(row_d1, text="滚动:").pack(side=tk.LEFT)
+        self._scroll_min = ttk.Entry(row_d1, width=4)
         self._scroll_min.insert(0, "2")
         self._scroll_min.pack(side=tk.LEFT)
         ttk.Label(row_d1, text="-").pack(side=tk.LEFT)
-        self._scroll_max = ttk.Entry(row_d1, width=5)
+        self._scroll_max = ttk.Entry(row_d1, width=4)
         self._scroll_max.insert(0, "5")
         self._scroll_max.pack(side=tk.LEFT)
 
-        row_d2 = ttk.Frame(delay_frame)
-        row_d2.pack(fill=tk.X, pady=2)
-        ttk.Label(row_d2, text="翻页间隔:", width=10).pack(side=tk.LEFT)
-        self._page_min = ttk.Entry(row_d2, width=5)
+        # 翻页间隔
+        ttk.Label(row_d1, text="  翻页:").pack(side=tk.LEFT)
+        self._page_min = ttk.Entry(row_d1, width=4)
         self._page_min.insert(0, "3")
         self._page_min.pack(side=tk.LEFT)
-        ttk.Label(row_d2, text="-").pack(side=tk.LEFT)
-        self._page_max = ttk.Entry(row_d2, width=5)
+        ttk.Label(row_d1, text="-").pack(side=tk.LEFT)
+        self._page_max = ttk.Entry(row_d1, width=4)
         self._page_max.insert(0, "8")
         self._page_max.pack(side=tk.LEFT)
 
-        row_d3 = ttk.Frame(delay_frame)
-        row_d3.pack(fill=tk.X, pady=2)
-        ttk.Label(row_d3, text="缓存有效期(分):", width=12).pack(side=tk.LEFT)
-        self._cache_ttl = ttk.Entry(row_d3, width=5)
+        # 缓存有效期
+        ttk.Label(row_d1, text="  缓存(分):").pack(side=tk.LEFT)
+        self._cache_ttl = ttk.Entry(row_d1, width=4)
         self._cache_ttl.insert(0, "30")
         self._cache_ttl.pack(side=tk.LEFT)
-        ttk.Label(row_d3, text="0=禁用", foreground="gray").pack(side=tk.LEFT, padx=4)
+        ttk.Label(row_d1, text="(0=禁用)", foreground="gray").pack(side=tk.LEFT, padx=2)
 
         row_d4 = ttk.Frame(delay_frame)
-        row_d4.pack(fill=tk.X, pady=2)
+        row_d4.pack(fill=tk.X, pady=(4, 2))
         self._force_no_cache_var = tk.BooleanVar(value=False)
         ttk.Checkbutton(row_d4, text="🔄 强制忽略缓存（测试用：跳过所有缓存+进度，从头重爬）",
                         variable=self._force_no_cache_var).pack(side=tk.LEFT)
@@ -347,6 +346,15 @@ class ZhihuCrawlerGUI:
         ttk.Label(manual_btn_row, text="支持: https://www.zhihu.com/question/xxx/answer/xxx",
                   foreground="gray", font=("", 8)).pack(side=tk.LEFT, padx=8)
 
+        # 分割大MD工具（左侧独立功能区）
+        ttk.Separator(left_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(12, 2))
+        split_row = ttk.Frame(left_frame)
+        split_row.pack(fill=tk.X, pady=(0, 4))
+        ttk.Label(split_row, text="🔧 工具",
+                  font=("", 9, "bold"), foreground="#888").pack(side=tk.LEFT)
+        ttk.Button(split_row, text="✂ 分割大MD（>10MB按标题拆分）",
+                   command=self._split_large_md_file, width=28).pack(side=tk.LEFT, padx=(8, 0))
+
         # 右侧面板: 日志
         right_frame = ttk.Frame(main_frame, width=420)
         right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(4, 0))
@@ -369,8 +377,7 @@ class ZhihuCrawlerGUI:
         # 日志操作
         log_btn_row = ttk.Frame(right_frame)
         log_btn_row.pack(fill=tk.X, pady=(4, 0))
-        ttk.Button(log_btn_row, text="清空日志", command=self._clear_log, width=10).pack(side=tk.RIGHT)
-        ttk.Button(log_btn_row, text="✂ 分割大MD", command=self._split_large_md_file, width=12).pack(side=tk.RIGHT, padx=(0, 6))
+        ttk.Button(log_btn_row, text="🗑 清空日志区", command=self._clear_log, width=12).pack(side=tk.RIGHT)
 
         # 关闭事件
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -737,23 +744,53 @@ class ZhihuCrawlerGUI:
             cookies = load_manual_cookies(cp)
             if cookies:
                 self._login_status.config(text="🟡 有手动 Cookie (待验证)", foreground="#e5b73c")
-                # 回填到输入框（只取 z_c0）
+                # 回填到输入框（只取 z_c0，显示掩码）
                 for c in cookies:
                     if c.get('name') == 'z_c0':
+                        raw = c.get('value', '')
+                        self._raw_z_c0 = raw
                         self._z_c0_entry.delete(0, tk.END)
-                        self._z_c0_entry.insert(0, c.get('value', ''))
+                        self._z_c0_entry.insert(0, self._mask_cookie(raw))
                         break
             else:
                 self._login_status.config(text="🔴 未登录", foreground="#f44747")
         else:
             self._login_status.config(text="🔴 未登录", foreground="#f44747")
 
+    def _mask_cookie(self, val: str) -> str:
+        """前6位可见 + **** + 后4位可见"""
+        if not val or len(val) < 8:
+            return val
+        return f"{val[:6]}****{val[-4:]}"
+
+    def _on_cookie_focus_in(self, event=None):
+        """点击输入框 → 显示完整cookie"""
+        if self._raw_z_c0:
+            self._z_c0_entry.delete(0, tk.END)
+            self._z_c0_entry.insert(0, self._raw_z_c0)
+
+    def _on_cookie_focus_out(self, event=None):
+        """离开输入框 → 恢复掩码显示"""
+        val = self._z_c0_entry.get().strip()
+        if val:
+            self._raw_z_c0 = val  # 用户可能修改了
+            self._z_c0_entry.delete(0, tk.END)
+            self._z_c0_entry.insert(0, self._mask_cookie(val))
+
+    def _get_raw_cookie(self) -> str:
+        """获取完整cookie值（优先从raw取，否则从entry取）"""
+        entry_val = self._z_c0_entry.get().strip()
+        if '*' in entry_val:
+            return self._raw_z_c0
+        return entry_val
+
     def _save_cookies(self):
         """保存 Cookie 到文件"""
-        zc0 = self._z_c0_entry.get().strip()
+        zc0 = self._get_raw_cookie()
         if not zc0:
             messagebox.showwarning("提示", "请先填入 z_c0 Cookie 值")
             return
+        self._raw_z_c0 = zc0
         cookies = [
             {"name": "z_c0", "value": zc0, "domain": ".zhihu.com", "path": "/"},
             {"name": "_zap", "value": "0", "domain": ".zhihu.com", "path": "/"},
@@ -764,6 +801,9 @@ class ZhihuCrawlerGUI:
         cp.write_text(json.dumps(cookies, ensure_ascii=False, indent=2), encoding='utf-8')
         self._login_status.config(text="🟡 Cookie 已保存 (待验证)", foreground="#e5b73c")
         self._log("💾 Cookie 已保存到 browser_data/cookies.json", 'info')
+        # 保存后显示掩码
+        self._z_c0_entry.delete(0, tk.END)
+        self._z_c0_entry.insert(0, self._mask_cookie(zc0))
         messagebox.showinfo("保存成功",
             "Cookie 已保存。\n\n"
             "如果你还知道 _zap 和 d_c0 的值，可以手动编辑\n"
@@ -777,6 +817,7 @@ class ZhihuCrawlerGUI:
                    get_login_state_path(self._cfg.browser_data_dir)]:
             if f.exists():
                 f.unlink()
+        self._raw_z_c0 = ""
         self._z_c0_entry.delete(0, tk.END)
         self._login_status.config(text="🔴 未登录", foreground="#f44747")
         self._log("🗑 登录状态已清除", 'info')
