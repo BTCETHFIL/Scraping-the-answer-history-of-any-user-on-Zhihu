@@ -24,6 +24,11 @@
           "date": "2026-06-19 07:01:47",
           "answers_scraped": 5,
           "output_dir": "output\\44-41-80-77"
+        },
+        {
+          "date": "2026-06-20 17:00:23",
+          "answers_scraped": 3,
+          "output_dir": "output\\祈祈_44-41-80-77"
         }
       ]
     },
@@ -148,5 +153,5 @@
       "crawl_history": []
     }
   ],
-  "updated": "2026-06-19 22:51:18"
+  "updated": "2026-06-20 17:00:23"
 }

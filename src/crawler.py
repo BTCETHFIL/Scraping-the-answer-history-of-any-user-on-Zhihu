@@ -17,7 +17,7 @@ from config import config
 from converter import html_to_md, extract_answer_meta
 from storage import (
     save_answer, save_progress, load_progress,
-    save_index, embed_images_base64,
+    embed_images_base64,
     check_missing_files,
     load_links_cache, save_links_cache,
     load_answer_cache, save_answer_cache,
@@ -477,9 +477,10 @@ def sanitize_html_for_offline(html_text: str) -> str:
 
 
 def crawl_answer_combined(page: Page, item: dict,
-                         user_profile: dict = None) -> dict:
+                         user_profile: dict = None,
+                         output_dir: Path = None) -> dict:
     """
-    混合模式：一次页面访问，同时获取截图 + 文字（含内嵌图片）
+    混合模式：一次页面访问，同时获取截图 + 文字
     上半部分 = 内容区截图（问题+回答，排除右侧栏），下半部分 = 可搜索/复制的文字
     截图保存为独立 PNG 文件（{answer_id}.png），MD 中用相对路径引用
     返回 {meta, md_text, screenshot_bytes, html_text}
@@ -524,10 +525,16 @@ def crawl_answer_combined(page: Page, item: dict,
             pass
         time.sleep(1)
 
-        # ── 4. 截图：仅问题+回答内容区（排除右侧栏）──
+        # ── 4. 截图：仅问题+回答内容区（排除右侧栏），保存为独立 PNG ──
         screenshot_bytes = _capture_answer_area(page)
-        # 截图以 base64 data URI 嵌入 MD，保证 MD 文件移动到任意位置后图片仍可显示
-        screenshot_b64 = base64.b64encode(screenshot_bytes).decode('ascii')
+        # 保存截图 PNG（与 MD 同目录，避免 base64 单行过长导致渲染失败）
+        screenshot_filename = f"{answer_id}.png"
+        screenshot_rel = f"./{screenshot_filename}"
+        if output_dir:
+            try:
+                (Path(output_dir) / screenshot_filename).write_bytes(screenshot_bytes)
+            except Exception:
+                screenshot_rel = None  # 写盘失败则跳过截图引用
 
         # ── 5. 提取文字内容 ──
         raw_html = page.content()
@@ -545,10 +552,14 @@ def crawl_answer_combined(page: Page, item: dict,
         if not meta.get('comment_count') and item.get('comment_count'):
             meta['comment_count'] = item['comment_count']
 
-        # 生成文字版 MD 并嵌入图片
+        # 生成文字版 MD 并嵌入图片（传 cookies 解决知乎 CDN 防盗链）
         text_md = html_to_md(html_text, answer_meta=meta)
         if config.download_images:
-            text_md = embed_images_base64(text_md)
+            try:
+                ctx_cookies = {c['name']: c['value'] for c in page.context.cookies()}
+            except Exception:
+                ctx_cookies = None
+            text_md = embed_images_base64(text_md, cookies=ctx_cookies)
 
         # ── 6. 合并文档：头部 + 截图 + 分隔 + 文字 ──
         lines = []
@@ -609,7 +620,10 @@ def crawl_answer_combined(page: Page, item: dict,
         lines.append("")
         lines.append("## 📸 原页面截图")
         lines.append("")
-        lines.append(f"![问题与回答截图](data:image/png;base64,{screenshot_b64})")
+        if screenshot_rel:
+            lines.append(f"![问题与回答截图]({screenshot_rel})")
+        else:
+            lines.append("> ⚠ 截图保存失败")
         lines.append("")
         lines.append("---")
         lines.append("")
@@ -835,9 +849,16 @@ def crawl_user_answers(page: Page, user_id: str,
                 # 缓存中 screenshot_bytes 以 base64 存储，需还原
                 if 'screenshot_bytes' in result and isinstance(result['screenshot_bytes'], str):
                     result['screenshot_bytes'] = base64.b64decode(result['screenshot_bytes'])
+                # 缓存命中时也确保截图 PNG 存在（兼容旧缓存含 base64 URI 格式）
+                png_path = output_dir / f"{aid}.png"
+                if not png_path.exists() and result.get('screenshot_bytes'):
+                    try:
+                        png_path.write_bytes(result['screenshot_bytes'])
+                    except Exception:
+                        pass
                 log_print(f"📦 缓存命中: {item.get('title', '')[:30]}...")
             else:
-                result = crawl_answer_combined(page, item, user_profile=user_profile)
+                result = crawl_answer_combined(page, item, user_profile=user_profile, output_dir=output_dir)
                 if result and result['md_text']:
                     # 缓存时 screenshot_bytes 转为 base64（JSON 兼容）
                     cache_result = dict(result)
@@ -858,13 +879,20 @@ def crawl_user_answers(page: Page, user_id: str,
                         content_skip += 1
                         continue
 
+                # 修复旧缓存中可能残留的 base64 截图引用 → 相对 PNG 引用
+                md_to_save = result['md_text']
+                if 'data:image/png;base64,' in md_to_save:
+                    md_to_save = re.sub(
+                        r'!\[问题与回答截图\]\(data:image/png;base64,[^)]+\)',
+                        f'![问题与回答截图](./{aid}.png)',
+                        md_to_save
+                    )
                 fpath = save_answer(
                     output_dir,
                     result['meta'],
-                    result['md_text'],
+                    md_to_save,
                     result.get('html_text', '')
                 )
-                # 截图已 base64 嵌入 MD 中，无需单独保存 PNG 文件
                 all_meta.append(result['meta'])
                 completed_set.add(item['answer_id'])
                 file_map[item['answer_id']] = fpath.name
@@ -894,9 +922,9 @@ def crawl_user_answers(page: Page, user_id: str,
             log_print("\n  ⚠ 用户手动停止（延迟中）")
             break
 
-    # 最终保存（file_map 合并写入 progress.json，历史记录不会丢失）
+    # 最终保存（file_map 合并写入 .cache/progress.json，历史记录不会丢失）
     save_progress(output_dir, completed_set, file_map=file_map)
-    save_index(output_dir, all_meta)
+    # INDEX.md 不再自动生成（用户仅需 MD 成果文件）
 
     # EVIDENCE_REPORT.md 暂不生成，需要时单独提出
 
@@ -1084,15 +1112,18 @@ def crawl_single_url(page: Page, url: str, output_dir: str = None,
         }
         text_md = html_to_md(html, answer_meta=meta)
 
-        # 内容图片 base64 嵌入
+        # 内容图片 base64 嵌入（传 cookies 解决知乎 CDN 防盗链）
         from storage import embed_images_base64
-        text_md = embed_images_base64(text_md)
+        try:
+            ctx_cookies = {c['name']: c['value'] for c in page.context.cookies()}
+        except Exception:
+            ctx_cookies = None
+        text_md = embed_images_base64(text_md, cookies=ctx_cookies)
 
-        # ── 截图 ──
+        # ── 截图（先采集字节，确定输出目录后再保存为独立 PNG）──
         screenshot_bytes = _capture_answer_area(page)
-        screenshot_b64 = base64.b64encode(screenshot_bytes).decode('ascii')
 
-        # ── 合并 MD ──
+        # ── 合并 MD（截图引用使用占位符，待确定目录后替换）──
         lines = []
         lines.append(f"# [{title}]({url})")
         lines.append("")
@@ -1111,7 +1142,7 @@ def crawl_single_url(page: Page, url: str, output_dir: str = None,
         lines.append("")
         lines.append("## 📸 原页面截图")
         lines.append("")
-        lines.append(f"![问题与回答截图](data:image/png;base64,{screenshot_b64})")
+        lines.append("{SCREENSHOT_PLACEHOLDER}")
         lines.append("")
         lines.append("---")
         lines.append("")
@@ -1158,6 +1189,18 @@ def crawl_single_url(page: Page, url: str, output_dir: str = None,
             # 无法确定作者：用 answer_id 生成唯一目录，避免多人内容混入 unknown
             user_dir = base_dir / f"_unknown_{answer_id[:8]}"
             user_dir.mkdir(parents=True, exist_ok=True)
+
+        # ── 保存截图 PNG（与 MD 同目录）──
+        screenshot_filename = f"{answer_id}.png"
+        png_path = user_dir / screenshot_filename
+        screenshot_md = ""
+        try:
+            png_path.write_bytes(screenshot_bytes)
+            screenshot_md = f"![问题与回答截图](./{screenshot_filename})"
+        except Exception:
+            screenshot_md = "> ⚠ 截图保存失败"
+        # 替换占位符
+        md_text = md_text.replace("{SCREENSHOT_PLACEHOLDER}", screenshot_md)
 
         # ── 保存 MD ──
         safe_title = sanitize_filename(title, 60)

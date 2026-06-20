@@ -6,6 +6,7 @@
 import base64
 import json
 import re
+import shutil
 import time
 from pathlib import Path
 
@@ -57,10 +58,15 @@ def save_answer(output_dir: Path, meta: dict, md_text: str, html_text: str = "")
 
 
 
-def embed_images_base64(md_text: str) -> str:
+def embed_images_base64(md_text: str, cookies: dict = None) -> str:
     """下载 Markdown 中的图片并以 base64 data URI 嵌入，生成自包含 MD"""
+    import re as _re_module
     # 正则匹配 Markdown 图片: ![alt](url)
-    pattern = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
+    pattern = _re_module.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
+
+    cookie_str = ''
+    if cookies:
+        cookie_str = '; '.join(f'{k}={v}' for k, v in cookies.items())
 
     def replacer(m):
         alt = m.group(1)
@@ -79,8 +85,13 @@ def embed_images_base64(md_text: str) -> str:
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Referer': 'https://www.zhihu.com/',
             }
+            if cookie_str:
+                headers['Cookie'] = cookie_str
             resp = requests.get(url, headers=headers, timeout=15)
             if resp.status_code == 200:
+                # 跳过过大图片（>5MB），避免 MD 膨胀
+                if len(resp.content) > 5 * 1024 * 1024:
+                    return m.group(0)
                 img_data = base64.b64encode(resp.content).decode('ascii')
                 content_type = resp.headers.get('Content-Type', 'image/jpeg')
                 data_uri = f"data:{content_type};base64,{img_data}"
@@ -120,12 +131,25 @@ def load_progress_with_files(output_dir: Path) -> tuple[set, dict]:
     return set(), {}
 
 
+def _progress_file(output_dir: Path) -> Path:
+    """progress.json 路径（存于 .cache/ 子目录）"""
+    return _cache_dir(output_dir) / "progress.json"
+
+
 def _load_progress_data(output_dir: Path) -> dict:
-    """读取 progress.json 原始数据"""
-    progress_file = output_dir / "progress.json"
-    if progress_file.exists():
+    """读取 progress.json 原始数据，兼容旧位置的迁移"""
+    # 新位置优先
+    new_file = _progress_file(output_dir)
+    old_file = output_dir / "progress.json"
+    # 迁移：旧位置存在但新位置不存在时，移动到新位置
+    if old_file.exists() and not new_file.exists():
         try:
-            return json.loads(progress_file.read_text(encoding='utf-8'))
+            shutil.move(str(old_file), str(new_file))
+        except Exception:
+            pass
+    if new_file.exists():
+        try:
+            return json.loads(new_file.read_text(encoding='utf-8'))
         except Exception:
             pass
     return {}
@@ -147,10 +171,10 @@ def _discover_files_from_disk(output_dir: Path, answer_ids: set) -> dict:
 def save_progress(output_dir: Path, completed: set,
                   file_map: dict = None):
     """
-    保存爬取进度
+    保存爬取进度（存于 .cache/progress.json）
     file_map: {answer_id: filename} 可选的文件名映射
     """
-    progress_file = output_dir / "progress.json"
+    progress_file = _progress_file(output_dir)
     # 合并已有的 files 映射
     existing_data = _load_progress_data(output_dir)
     existing_files = {}
@@ -260,7 +284,7 @@ def save_index(output_dir: Path, answers_meta: list):
 # ── 短时缓存：避免短时间内重复网络请求 ──
 
 def _cache_dir(output_dir: Path) -> Path:
-    d = output_dir / "cache"
+    d = output_dir / ".cache"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
