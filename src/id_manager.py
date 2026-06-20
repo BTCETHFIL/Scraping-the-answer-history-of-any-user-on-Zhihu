@@ -14,12 +14,14 @@ class UserEntry:
     """单个用户条目"""
     def __init__(self, user_id: str, nickname: str = "",
                  url: str = "", avatar_url: str = "",
-                 crawl_history: list = None):
+                 crawl_history: list = None,
+                 answers_count: int = 0):
         self.user_id = user_id
         self.nickname = nickname or user_id
         self.url = url or f"https://www.zhihu.com/people/{user_id}"
         self.avatar_url = avatar_url
         self.crawl_history = crawl_history or []
+        self.answers_count = answers_count
 
     def to_dict(self) -> dict:
         return {
@@ -28,6 +30,7 @@ class UserEntry:
             'url': self.url,
             'avatar_url': self.avatar_url,
             'crawl_history': self.crawl_history,
+            'answers_count': self.answers_count,
         }
 
     @classmethod
@@ -38,6 +41,7 @@ class UserEntry:
             url=d.get('url', ''),
             avatar_url=d.get('avatar_url', ''),
             crawl_history=d.get('crawl_history', []),
+            answers_count=d.get('answers_count', 0),
         )
 
     def __repr__(self):
@@ -129,13 +133,22 @@ class IDManager:
             return True
         return False
 
+    def update_answers_count(self, user_id: str, answers_count: int) -> bool:
+        """更新回答总数"""
+        u = self.find(user_id)
+        if u and answers_count > 0:
+            u.answers_count = answers_count
+            self.save()
+            return True
+        return False
+
     def get_all_ids(self) -> list[str]:
         """获取所有用户 ID 列表"""
         return [u.user_id for u in self.users]
 
-    def get_display_list(self) -> list[tuple[str, str, str]]:
-        """返回用于列表显示的 [(nickname, user_id, url), ...]"""
-        return [(u.nickname, u.user_id, u.url) for u in self.users]
+    def get_display_list(self) -> list[tuple[str, str, str, int]]:
+        """返回用于列表显示的 [(nickname, user_id, url, answers_count), ...]"""
+        return [(u.nickname, u.user_id, u.url, u.answers_count) for u in self.users]
 
     # ── 爬取历史 ─────────────────────────────────────
 

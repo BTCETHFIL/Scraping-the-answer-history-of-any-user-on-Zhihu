@@ -1261,6 +1261,12 @@ def crawl_user_answers(page: Page, user_id: str,
         from id_manager import get_id_manager
         mgr = get_id_manager()
         mgr.update_avatar(user_id, avatar_url)
+    # 更新回答总数到用户列表
+    answers_count = user_profile.get('answers_count', 0)
+    if answers_count > 0:
+        from id_manager import get_id_manager
+        mgr = get_id_manager()
+        mgr.update_answers_count(user_id, answers_count)
 
     # 预检查文件状态（使用含昵称的目录名；首次运行时会自动迁移旧目录）
     output_dir = get_output_path(config.output_dir, user_id, nickname)

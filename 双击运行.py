@@ -7,6 +7,7 @@ import os
 import io
 import json
 import re
+import subprocess
 import threading
 import webbrowser
 import tkinter as tk
@@ -259,14 +260,16 @@ class ZhihuCrawlerGUI:
         list_frame = ttk.Frame(user_frame)
         list_frame.pack(fill=tk.BOTH, expand=True)
         self._user_tree = ttk.Treeview(list_frame,
-                                        columns=("nickname", "user_id", "recent"),
+                                        columns=("nickname", "user_id", "answers", "recent"),
                                         show="headings", height=6, selectmode=tk.EXTENDED)
         self._user_tree.heading("nickname", text="昵称")
         self._user_tree.heading("user_id", text="用户ID")
+        self._user_tree.heading("answers", text="回答总数")
         self._user_tree.heading("recent", text="最近爬取")
-        self._user_tree.column("nickname", width=100, anchor=tk.W, minwidth=60)
-        self._user_tree.column("user_id", width=140, anchor=tk.W, minwidth=80)
-        self._user_tree.column("recent", width=180, anchor=tk.W, minwidth=100)
+        self._user_tree.column("nickname", width=90, anchor=tk.W, minwidth=60)
+        self._user_tree.column("user_id", width=120, anchor=tk.W, minwidth=80)
+        self._user_tree.column("answers", width=65, anchor=tk.E, minwidth=50)
+        self._user_tree.column("recent", width=165, anchor=tk.W, minwidth=100)
         self._user_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL,
                                    command=self._user_tree.yview)
@@ -601,12 +604,12 @@ class ZhihuCrawlerGUI:
         return self._id_mgr
 
     def _refresh_user_list(self):
-        """刷新用户列表显示（Treeview 三列：昵称 / 用户ID / 最近爬取）"""
+        """刷新用户列表显示（四列：昵称 / 用户ID / 回答总数 / 最近爬取）"""
         from crawler import get_crawl_status
         for item in self._user_tree.get_children():
             self._user_tree.delete(item)
         mgr = self._get_id_manager()
-        for nickname, user_id, url in mgr.get_display_list():
+        for nickname, user_id, url, answers_count in mgr.get_display_list():
             history = mgr.get_crawl_history(user_id)
             hist_info = ""
             if history:
@@ -626,8 +629,9 @@ class ZhihuCrawlerGUI:
                         hist_info += f" | {' '.join(group_parts)}"
             except Exception:
                 pass
+            answers_display = str(answers_count) if answers_count > 0 else "-"
             self._user_tree.insert("", tk.END, iid=user_id,
-                                    values=(nickname, user_id, hist_info))
+                                    values=(nickname, user_id, answers_display, hist_info))
         total = len(mgr.users)
         self._list_status.config(
             text=f"共 {total} 个用户"
@@ -1030,7 +1034,7 @@ class ZhihuCrawlerGUI:
         self._log(f"✅ 共清除 {total_deleted} 个缓存文件", 'info')
 
     def _visit_user_homepage(self):
-        """在浏览器中打开选中用户的知乎主页"""
+        """在Chrome浏览器中打开选中用户的知乎主页"""
         selected = self._user_tree.selection()
         if not selected:
             messagebox.showinfo("提示", "请先在列表中选中一个用户")
@@ -1041,7 +1045,19 @@ class ZhihuCrawlerGUI:
         if not user:
             return
         url = user.url or f"https://www.zhihu.com/people/{user_id}"
-        webbrowser.open(url)
+        # 优先使用配置的 Chrome 路径，否则尝试常见安装位置
+        chrome_path = self._cfg.chrome_exe
+        if not chrome_path or not Path(chrome_path).exists():
+            candidates = [
+                r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+                r"C:\Users\{}\AppData\Local\Google\Chrome\Application\chrome.exe".format(os.environ.get("USERNAME", "")),
+            ]
+            chrome_path = next((p for p in candidates if Path(p).exists()), None)
+        if chrome_path:
+            subprocess.Popen([chrome_path, url])
+        else:
+            webbrowser.open(url)
         self._list_status.config(text=f"已打开: {url}")
         self._log(f"🏠 已在浏览器中打开: {url}", 'info')
 
