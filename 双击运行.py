@@ -740,16 +740,34 @@ class ZhihuCrawlerGUI:
             messagebox.showwarning("提示", "已有爬取任务在运行中，请等待完成")
             return
 
+        keyword = self._keyword_entry.get().strip()
+
+        # ── 确认弹窗 ──
+        from crawler import _split_keywords
+        kws = _split_keywords(keyword)
+        filter_info = f"🔍 关键词筛选：{len(kws)}个 → {', '.join(kws[:8])}"
+        if len(kws) > 8:
+            filter_info += f" …(共{len(kws)}个)"
+        if not keyword:
+            filter_info = "⚠ 未设置关键词，将保存全部链接（无筛选）"
+        confirm_msg = (
+            f"确认批量保存？\n\n"
+            f"🔗 链接数: {len(urls)}条\n"
+            f"{filter_info}"
+        )
+        if not messagebox.askyesno("确认批量保存", confirm_msg, parent=self.root):
+            self._log("⚠ 用户取消批量保存", "warn")
+            return
+
+        if keyword:
+            keyword_mgr.add_recent(keyword)
+            self._refresh_keyword_ui()
+
         self._running = True
         self._start_btn.config(state=tk.DISABLED)
         self._manual_btn.config(state=tk.DISABLED)
         self._import_btn.config(state=tk.DISABLED)
         self._progress_label.config(text=f"正在批量保存 ({len(urls)}条)...")
-
-        keyword = self._keyword_entry.get().strip()
-        if keyword:
-            keyword_mgr.add_recent(keyword)
-            self._refresh_keyword_ui()
 
         threading.Thread(
             target=self._manual_urls_thread,
@@ -1559,6 +1577,10 @@ class ZhihuCrawlerGUI:
             if messagebox.askyesno("确认删除", f"确定要删除分组「{g.name}」吗？", parent=dialog):
                 keyword_mgr.delete_group(g.name)
                 self._refresh_keyword_ui()
+                # 如果删除的是主窗口当前选中的分组，清除输入框
+                if self._group_var.get() == g.name:
+                    self._group_var.set("（暂无分组）" if not keyword_mgr.groups else keyword_mgr.groups[0].name)
+                    self._keyword_entry.delete(0, tk.END)
                 self._log(f"🗑 已删除分组「{g.name}」", "warn")
                 dialog.destroy()
 
