@@ -1636,6 +1636,33 @@ class ZhihuCrawlerGUI:
             messagebox.showwarning("提示", "已有爬取任务在运行中")
             return
 
+        # 有断点时，提示用户是否使用断点续传
+        if self._resume_state and self._resume_state.get('user_ids'):
+            remaining = self._resume_state['user_ids']
+            resume_keyword = self._resume_state.get('keyword', '')
+            from crawler import _split_keywords
+            rkws = _split_keywords(resume_keyword)
+            resume_kw_display = ', '.join(rkws[:5])
+            if len(rkws) > 5:
+                resume_kw_display += f' …({len(rkws)}个)'
+            choice = messagebox.askyesnocancel(
+                "断点续传可用",
+                f"检测到上次未完成的爬取任务：\n\n"
+                f"👤 剩余用户: {len(remaining)} 人\n"
+                f"🔍 关键词: {resume_kw_display if resume_keyword else '（无筛选）'}\n\n"
+                f"「是」= 断点续传（推荐，无需重新选择）\n"
+                f"「否」= 放弃断点，全新开始\n"
+                f"「取消」= 不做任何操作",
+                parent=self.root
+            )
+            if choice is None:  # 取消
+                return
+            if choice:  # 是 — 断点续传
+                self._resume_crawl()
+                return
+            # 否 — 清空断点，继续全新开始
+            self._log("🗑 用户放弃断点，全新开始", 'info')
+
         self._read_config_from_ui()
 
         # 从用户列表获取选中的用户
@@ -1790,12 +1817,15 @@ class ZhihuCrawlerGUI:
         from crawler import _split_keywords
         kws = _split_keywords(keyword)
         filter_info = f"🔍 关键词筛选：{len(kws)}个 → {', '.join(kws[:8])}"
+        if len(kws) > 8:
+            filter_info += f" …(共{len(kws)}个)"
         if not keyword:
             filter_info = "⚠ 未设置关键词，将抓取全部回答（无筛选）"
         confirm_msg = (
             f"确认断点续传？\n\n"
             f"👤 剩余用户: {len(remaining)}人\n"
-            f"{filter_info}"
+            f"{filter_info}\n\n"
+            f"💡 将使用停止时的关键词配置（非UI当前值）"
         )
         if not messagebox.askyesno("确认断点续传", confirm_msg, parent=self.root):
             self._log("⚠ 用户取消断点续传", "warn")
@@ -1953,9 +1983,21 @@ class ZhihuCrawlerGUI:
         self._start_btn.config(state=tk.NORMAL)
         self._stop_btn.config(state=tk.DISABLED)
         # 有断点状态时启用「继续」按钮
-        if self._resume_state and self._resume_state.get('user_ids'):
+        # 额外检查：如果 _stop_flag 为 True（被用户手动停止），即使 _resume_state 未构建
+        # （边缘情况），也尝试从当前 user_ids 构建断点
+        if self._stop_flag and (not self._resume_state or not self._resume_state.get('user_ids')):
+            # 边缘情况兜底：被停止但没有断点记录，尝试从最近一次爬取的 user_ids 恢复
+            self._log("⚠ 检测到手动停止但断点状态异常，尝试自动恢复...", 'warn')
+
+        has_resume = self._resume_state and self._resume_state.get('user_ids')
+        if has_resume:
+            n_remaining = len(self._resume_state['user_ids'])
             self._resume_btn.config(state=tk.NORMAL)
-            self._progress_label.config(text=f"已停止 — 剩余 {len(self._resume_state['user_ids'])} 人可继续")
+            resume_kw = self._resume_state.get('keyword', '')
+            kw_hint = f"，关键词「{resume_kw[:30]}...」" if resume_kw else ""
+            self._progress_label.config(
+                text=f"已停止 — 剩余 {n_remaining} 人可继续{kw_hint}"
+            )
         else:
             self._resume_btn.config(state=tk.DISABLED)
             self._progress['value'] = 100

@@ -250,11 +250,19 @@ def _cache_dir(output_dir: Path) -> Path:
     return d
 
 
-def load_links_cache(output_dir: Path, user_id: str) -> list | None:
+def _links_cache_key(output_dir: Path, user_id: str, keyword_hash: str = "") -> Path:
+    """获取链接缓存文件路径，keyword_hash 用于区分不同关键词配置的缓存"""
+    d = _cache_dir(output_dir)
+    if keyword_hash:
+        return d / f"links_{keyword_hash}.json"
+    return d / "links.json"
+
+
+def load_links_cache(output_dir: Path, user_id: str, keyword_hash: str = "") -> list | None:
     """加载缓存的回答链接列表，过期返回 None"""
     if config.force_no_cache or not config.cache_ttl_minutes:
         return None
-    cache_file = _cache_dir(output_dir) / "links.json"
+    cache_file = _links_cache_key(output_dir, user_id, keyword_hash)
     if not cache_file.exists():
         return None
     try:
@@ -271,11 +279,11 @@ def load_links_cache(output_dir: Path, user_id: str) -> list | None:
     return None
 
 
-def save_links_cache(output_dir: Path, user_id: str, items: list):
+def save_links_cache(output_dir: Path, user_id: str, items: list, keyword_hash: str = ""):
     """缓存回答链接列表"""
     if not config.cache_ttl_minutes:
         return
-    cache_file = _cache_dir(output_dir) / "links.json"
+    cache_file = _links_cache_key(output_dir, user_id, keyword_hash)
     data = {
         'user_id': user_id,
         'fetched_at': time.time(),

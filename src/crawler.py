@@ -78,11 +78,15 @@ def collect_answer_links(page: Page, user_id: str, max_answers: int = 0,
     # 解析关键词列表
     kws = _split_keywords(keyword) if keyword and keyword_min_match > 0 else []
 
+    # 生成关键词哈希（用于区分不同关键词配置的缓存）
+    import hashlib
+    kw_hash = hashlib.md5(keyword.encode('utf-8')).hexdigest()[:8] if keyword else ""
+
     # 短时缓存检查：先看是否有未过期的链接缓存
     # 注意：有关键词提前终止时跳过缓存（缓存可能包含全部链接，需要重新收集以分批处理）
     from utils import get_output_path
     if not kws:
-        cached = load_links_cache(get_output_path(config.output_dir, user_id), user_id)
+        cached = load_links_cache(get_output_path(config.output_dir, user_id), user_id, keyword_hash=kw_hash)
         if cached:
             if max_answers > 0 and len(cached) > max_answers:
                 cached = cached[:max_answers]
@@ -273,7 +277,7 @@ def collect_answer_links(page: Page, user_id: str, max_answers: int = 0,
     # 缓存链接列表（关键词提前终止时不缓存——只收集了部分链接）
     if not kws:
         from utils import get_output_path as _gop
-        save_links_cache(_gop(config.output_dir, user_id), user_id, collected)
+        save_links_cache(_gop(config.output_dir, user_id), user_id, collected, keyword_hash=kw_hash)
     return collected
 
 
@@ -766,10 +770,12 @@ def crawl_user_answers(page: Page, user_id: str,
           + (f" (其中 {len(missing)} 条本地文件缺失)" if missing else ""))
 
     # 收集回答链接
+    # 始终传递 keyword，让缓存逻辑能感知关键词（避免使用旧的无过滤全量缓存）
+    # keyword_min_match=0 表示不提前终止（非测试模式），但仍传递关键词用于缓存键
     try:
         items = collect_answer_links(
             page, user_id, max_answers, stop_event=stop_event,
-            keyword=keyword if config.test_mode else "",
+            keyword=keyword,
             keyword_min_match=3 if config.test_mode else 0,
         )
     except StopCrawlException:
