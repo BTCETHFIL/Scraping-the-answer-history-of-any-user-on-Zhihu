@@ -1152,29 +1152,53 @@ def crawl_single_url(page: Page, url: str, output_dir: str = None,
         # 提取作者 & 作者 ID（用于按用户分类目录）
         author = ""
         author_id = ""
-        try:
-            author_el = page.locator('.AuthorInfo-name, .UserLink-link, '
-                                     '[class*="author"] a[class*="name"], '
-                                     '.ContentItem-authorInfo a').first
-            if author_el.count() > 0:
-                author = author_el.inner_text().strip()
-                href = author_el.get_attribute('href') or ''
-                m_aid = re.search(r'/people/([^/?]+)', href)
-                if m_aid:
-                    author_id = m_aid.group(1)
-        except Exception:
-            pass
-        # 如果上面没拿到 author_id，尝试从页面其他位置提取
-        if not author_id:
+        # 第一轮：定位回答卡片的作者信息（限定在回答区域内，避免拿到推荐用户/评论者）
+        author_selectors = [
+            # 优先：回答作者区域内的链接
+            '.AnswerItem .AuthorInfo a[href*="/people/"]',
+            '.ContentItem-authorInfo a[href*="/people/"]',
+            '[itemprop="author"] a[href*="/people/"]',
+            '.AuthorInfo a[href*="/people/"]',
+            # 备选：回答区域内的用户名
+            '.AnswerItem .AuthorInfo-name',
+            '.ContentItem-authorInfo',
+            '[class*="answer"] [class*="author"] a[href*="/people/"]',
+        ]
+        for sel in author_selectors:
             try:
-                any_author_link = page.locator('a[href*="/people/"]').first
-                if any_author_link.count() > 0:
-                    href = any_author_link.get_attribute('href') or ''
+                el = page.locator(sel).first
+                if el.count() > 0:
+                    author = el.inner_text().strip()
+                    href = el.get_attribute('href') or ''
                     m_aid = re.search(r'/people/([^/?]+)', href)
                     if m_aid:
                         author_id = m_aid.group(1)
+                        break
+            except Exception:
+                continue
+        # 第二轮：如果没拿到 author_id，尝试从 HTML meta 标签获取
+        if not author_id:
+            try:
+                m_meta = re.search(
+                    r'<meta\s[^>]*itemprop="author"[^>]*content="([^"]*)"',
+                    html
+                )
+                if m_meta:
+                    author = m_meta.group(1).strip()
             except Exception:
                 pass
+            try:
+                m_url = re.search(
+                    r'<meta\s[^>]*itemprop="url"[^>]*content="https?://www\.zhihu\.com/people/([^"/?]+)"',
+                    html
+                )
+                if m_url:
+                    author_id = m_url.group(1)
+            except Exception:
+                pass
+        # 第三轮：实在找不到 → 记录警告，使用 "unknown" 但附加 answer_id 前缀区分
+        if not author_id:
+            log_print(f"  ⚠ 无法确定作者，answer_id: {answer_id}")
 
         # 提取日期
         from utils import extract_date_from_html
@@ -1255,16 +1279,18 @@ def crawl_single_url(page: Page, url: str, output_dir: str = None,
                     'error': f'标题和内容均不含关键词「{kw}」',
                 }
 
-        # ── 按作者分类目录（昵称 + author_id，与自动抓取一致）──
+        # ── 按作者分类目录（复用 get_output_path，与自动抓取命名一致）──
+        from utils import get_output_path
         if author_id:
-            safe_author = sanitize_filename(author, 30) if author and author != author_id else ""
-            dirname = f"{safe_author}_{author_id}" if safe_author else author_id
+            user_dir = get_output_path(str(base_dir), author_id, author)
         elif author:
-            dirname = sanitize_filename(author, 40)
+            # 有昵称无 ID：用昵称做目录名（罕见情况）
+            user_dir = base_dir / sanitize_filename(author, 40)
+            user_dir.mkdir(parents=True, exist_ok=True)
         else:
-            dirname = "unknown"
-        user_dir = base_dir / dirname
-        user_dir.mkdir(parents=True, exist_ok=True)
+            # 无法确定作者：用 answer_id 生成唯一目录，避免多人内容混入 unknown
+            user_dir = base_dir / f"_unknown_{answer_id[:8]}"
+            user_dir.mkdir(parents=True, exist_ok=True)
 
         # ── 保存 MD ──
         safe_title = sanitize_filename(title, 60)
