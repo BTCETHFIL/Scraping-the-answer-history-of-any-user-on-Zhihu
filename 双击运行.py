@@ -29,6 +29,7 @@ from config import config, Config
 from utils import extract_user_id
 from auth import get_cookie_path, get_login_state_path, load_manual_cookies
 from id_manager import get_id_manager
+from keyword_manager import keyword_mgr
 
 
 # ══════════════════════════════════════════════════════════
@@ -242,6 +243,30 @@ class ZhihuCrawlerGUI:
         self._keyword_entry.pack(side=tk.LEFT, padx=2)
         ttk.Label(row1, text="（多关键词用逗号分隔，标题/内容含任一即抓取，answer_id 自动去重）", foreground="gray",
                   font=("", 8)).pack(side=tk.LEFT)
+
+        # ── 关键词分组管理 ──
+        row_kw = ttk.Frame(crawl_frame)
+        row_kw.pack(fill=tk.X, pady=2)
+        ttk.Label(row_kw, text="📂 分组:", foreground="#9cdcfe", font=("", 8)).pack(side=tk.LEFT, padx=(0, 4))
+        self._group_var = tk.StringVar()
+        self._group_combo = ttk.Combobox(row_kw, textvariable=self._group_var,
+                                         width=14, state="readonly")
+        self._group_combo.pack(side=tk.LEFT, padx=2)
+        self._group_combo.bind("<<ComboboxSelected>>", self._on_group_selected)
+        ttk.Button(row_kw, text="应用分组", command=self._apply_group, width=8).pack(side=tk.LEFT, padx=2)
+        ttk.Button(row_kw, text="保存为分组…", command=self._save_as_group, width=10).pack(side=tk.LEFT, padx=2)
+        ttk.Button(row_kw, text="管理分组…", command=self._manage_groups, width=9).pack(side=tk.LEFT, padx=2)
+        ttk.Button(row_kw, text="导入文件…", command=self._import_keywords_file, width=9).pack(side=tk.LEFT, padx=2)
+
+        # ── 最近使用关键词 ──
+        row_recent = ttk.Frame(crawl_frame)
+        row_recent.pack(fill=tk.X, pady=1)
+        ttk.Label(row_recent, text="🕐 最近:", foreground="#9cdcfe", font=("", 8)).pack(side=tk.LEFT, padx=(0, 4))
+        self._recent_var = tk.StringVar()
+        self._recent_combo = ttk.Combobox(row_recent, textvariable=self._recent_var,
+                                          width=50, state="readonly")
+        self._recent_combo.pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
+        self._recent_combo.bind("<<ComboboxSelected>>", self._on_recent_selected)
 
         row2 = ttk.Frame(crawl_frame)
         row2.pack(fill=tk.X, pady=2)
@@ -568,6 +593,9 @@ class ZhihuCrawlerGUI:
         self._progress_label.config(text=f"正在批量保存 ({len(urls)}条)...")
 
         keyword = self._keyword_entry.get().strip()
+        if keyword:
+            keyword_mgr.add_recent(keyword)
+            self._refresh_keyword_ui()
 
         threading.Thread(
             target=self._manual_urls_thread,
@@ -929,6 +957,7 @@ class ZhihuCrawlerGUI:
         self._cache_ttl.insert(0, str(self._cfg.cache_ttl_minutes))
         self._force_no_cache_var.set(self._cfg.force_no_cache)
         self._on_test_toggle()  # 初始同步「最多爬取」输入框的启用状态
+        self._refresh_keyword_ui()  # 刷新关键词分组/最近使用下拉框
 
     def _read_config_from_ui(self):
         """从 UI 读取配置，更新 Config 对象"""
@@ -990,6 +1019,184 @@ class ZhihuCrawlerGUI:
             self._save_html_cb.config(state=tk.DISABLED)
         else:
             self._save_html_cb.config(state=tk.NORMAL)
+
+    # ── 关键词分组管理 ────────────────────────────────────
+
+    def _refresh_keyword_ui(self):
+        """刷新关键词分组下拉框和最近使用下拉框"""
+        groups = keyword_mgr.group_names()
+        self._group_combo["values"] = groups if groups else ["（暂无分组）"]
+        recent = keyword_mgr.recent
+        self._recent_combo["values"] = recent if recent else ["（暂无记录）"]
+
+    def _on_group_selected(self, event=None):
+        """选中分组时预览关键词（不自动填入）"""
+        name = self._group_var.get()
+        if not name or name == "（暂无分组）":
+            return
+        g = keyword_mgr.get_group(name)
+        if g:
+            preview = ", ".join(g.keywords[:5])
+            if len(g.keywords) > 5:
+                preview += f" …(共{len(g.keywords)}个)"
+            self._log(f"📂 分组「{name}」: {preview}", "info")
+
+    def _apply_group(self):
+        """将选中分组的全部关键词填入关键词输入框"""
+        name = self._group_var.get()
+        if not name or name == "（暂无分组）":
+            messagebox.showinfo("提示", "请先选择一个关键词分组")
+            return
+        g = keyword_mgr.get_group(name)
+        if g:
+            kw_str = ", ".join(g.keywords)
+            self._keyword_entry.delete(0, tk.END)
+            self._keyword_entry.insert(0, kw_str)
+            self._log(f"✅ 已应用分组「{name}」({len(g.keywords)}个关键词)", "info")
+
+    def _save_as_group(self):
+        """将当前输入框的关键词保存为分组"""
+        kw_str = self._keyword_entry.get().strip()
+        if not kw_str:
+            messagebox.showwarning("提示", "请先在关键词输入框中输入关键词")
+            return
+
+        # 弹出命名对话框
+        dialog = tk.Toplevel(self._root)
+        dialog.title("保存关键词分组")
+        dialog.geometry("380x180")
+        dialog.resizable(False, False)
+        dialog.transient(self._root)
+        dialog.grab_set()
+
+        ttk.Label(dialog, text="分组名称:").pack(pady=(12, 2))
+        name_entry = ttk.Entry(dialog, width=40)
+        name_entry.pack(padx=20, pady=2)
+        name_entry.focus_set()
+
+        ttk.Label(dialog, text="备注（可选）:", font=("", 8)).pack(pady=(8, 2))
+        note_entry = ttk.Entry(dialog, width=40)
+        note_entry.pack(padx=20, pady=2)
+
+        def do_save():
+            name = name_entry.get().strip()
+            if not name:
+                messagebox.showwarning("提示", "请输入分组名称", parent=dialog)
+                return
+            # 用 crawler 的 _split_keywords 保持拆分逻辑一致
+            from crawler import _split_keywords
+            kws = _split_keywords(kw_str)
+            is_new = keyword_mgr.add_group(name, kws, note_entry.get().strip())
+            self._refresh_keyword_ui()
+            self._group_var.set(name)
+            act = "新建" if is_new else "更新（合并关键词）"
+            self._log(f"💾 {act}分组「{name}」({len(kws)}个关键词)", "info")
+            dialog.destroy()
+
+        ttk.Button(dialog, text="保存", command=do_save).pack(pady=(12, 6))
+        dialog.bind("<Return>", lambda e: do_save())
+
+    def _manage_groups(self):
+        """管理关键词分组（查看/编辑/删除）"""
+        dialog = tk.Toplevel(self._root)
+        dialog.title("管理关键词分组")
+        dialog.geometry("520x420")
+        dialog.resizable(True, True)
+        dialog.transient(self._root)
+        dialog.grab_set()
+
+        # 分组列表
+        list_frame = ttk.Frame(dialog)
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        ttk.Label(list_frame, text="已有分组（选中后可编辑/删除）:", font=("", 9)).pack(anchor=tk.W)
+        lb = tk.Listbox(list_frame, height=8)
+        lb.pack(fill=tk.BOTH, expand=True, pady=4)
+        for g in keyword_mgr.groups:
+            lb.insert(tk.END, f"{g.name}  ({len(g.keywords)}个关键词)")
+
+        # 关键词编辑区
+        ttk.Label(list_frame, text="关键词（逗号分隔）:", font=("", 9)).pack(anchor=tk.W, pady=(8, 0))
+        kw_text = tk.Text(list_frame, height=5)
+        kw_text.pack(fill=tk.BOTH, expand=True, pady=4)
+
+        # 按钮
+        btn_frame = ttk.Frame(list_frame)
+        btn_frame.pack(fill=tk.X, pady=6)
+
+        def on_select(evt=None):
+            sel = lb.curselection()
+            if sel:
+                g = keyword_mgr.groups[sel[0]]
+                kw_text.delete("1.0", tk.END)
+                kw_text.insert("1.0", ", ".join(g.keywords))
+
+        lb.bind("<<ListboxSelect>>", on_select)
+
+        def do_update():
+            sel = lb.curselection()
+            if not sel:
+                messagebox.showwarning("提示", "请先选择一个分组", parent=dialog)
+                return
+            g = keyword_mgr.groups[sel[0]]
+            new_kws = [k.strip() for k in kw_text.get("1.0", tk.END)
+                       .replace("，", ",").replace(";", ",").replace("\n", ",")
+                       .split(",") if k.strip()]
+            keyword_mgr.update_group_keywords(g.name, new_kws)
+            self._refresh_keyword_ui()
+            self._log(f"✏ 已更新分组「{g.name}」({len(new_kws)}个关键词)", "info")
+            messagebox.showinfo("完成", f"分组「{g.name}」已更新", parent=dialog)
+            dialog.destroy()
+
+        def do_delete():
+            sel = lb.curselection()
+            if not sel:
+                messagebox.showwarning("提示", "请先选择一个分组", parent=dialog)
+                return
+            g = keyword_mgr.groups[sel[0]]
+            if messagebox.askyesno("确认删除", f"确定要删除分组「{g.name}」吗？", parent=dialog):
+                keyword_mgr.delete_group(g.name)
+                self._refresh_keyword_ui()
+                self._log(f"🗑 已删除分组「{g.name}」", "warn")
+                dialog.destroy()
+
+        ttk.Button(btn_frame, text="💾 保存修改", command=do_update).pack(side=tk.LEFT, padx=4)
+        ttk.Button(btn_frame, text="🗑 删除分组", command=do_delete).pack(side=tk.LEFT, padx=4)
+        ttk.Button(btn_frame, text="关闭", command=dialog.destroy).pack(side=tk.RIGHT, padx=4)
+
+        # 初始选中第一个
+        if lb.size() > 0:
+            lb.selection_set(0)
+            on_select()
+
+    def _import_keywords_file(self):
+        """从文本文件导入关键词"""
+        filepath = filedialog.askopenfilename(
+            title="选择关键词文件",
+            filetypes=[("文本文件", "*.txt"), ("CSV文件", "*.csv"), ("所有文件", "*.*")]
+        )
+        if not filepath:
+            return
+        try:
+            kws = keyword_mgr.import_from_file(filepath)
+            if not kws:
+                messagebox.showwarning("导入结果", "文件中未找到关键词")
+                return
+            # 填入输入框
+            kw_str = ", ".join(kws)
+            self._keyword_entry.delete(0, tk.END)
+            self._keyword_entry.insert(0, kw_str)
+            self._log(f"📥 已导入 {len(kws)} 个关键词: {Path(filepath).name}", "info")
+        except Exception as e:
+            messagebox.showerror("导入失败", f"读取文件出错:\n{e}")
+
+    def _on_recent_selected(self, event=None):
+        """选中最近使用的关键词时填入输入框"""
+        kw = self._recent_var.get()
+        if not kw or kw == "（暂无记录）":
+            return
+        self._keyword_entry.delete(0, tk.END)
+        self._keyword_entry.insert(0, kw)
 
     def _start_crawl(self):
         if self._running:
@@ -1060,6 +1267,10 @@ class ZhihuCrawlerGUI:
 
         # 读取关键词（提前，测试模式需要判断）
         keyword = self._keyword_entry.get().strip()
+        # 记录到最近使用列表
+        if keyword:
+            keyword_mgr.add_recent(keyword)
+            self._refresh_keyword_ui()
 
         # ── 启动爬取 ──
         self._log(f"\n{'='*55}", 'dim')
