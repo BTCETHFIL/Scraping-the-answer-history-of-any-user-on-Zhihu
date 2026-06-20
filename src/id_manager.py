@@ -7,7 +7,7 @@ from pathlib import Path
 from datetime import datetime
 
 
-ID_LIST_FILE = Path(__file__).parent / "id_list.json"
+ID_LIST_FILE = Path(__file__).parent.parent / "id_list.json"
 
 
 class UserEntry:

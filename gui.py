@@ -15,6 +15,11 @@ from pathlib import Path
 # 工作目录切到项目根
 os.chdir(Path(__file__).parent)
 
+# 将 src/ 加入 sys.path，所有模块已移至 src/ 子目录
+_src_dir = Path(__file__).parent / "src"
+if str(_src_dir) not in sys.path:
+    sys.path.insert(0, str(_src_dir))
+
 # 初始化日志（文件滚动覆盖，2MB×3）
 from log_setup import init_logging
 init_logging()

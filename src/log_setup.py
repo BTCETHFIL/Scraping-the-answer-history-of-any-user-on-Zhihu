@@ -7,7 +7,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-LOG_DIR = Path(__file__).parent / "log"
+LOG_DIR = Path(__file__).parent.parent / "log"
 LOG_FILE = LOG_DIR / "zhihu_crawler.log"
 MAX_BYTES = 2 * 1024 * 1024  # 2 MB
 BACKUP_COUNT = 3

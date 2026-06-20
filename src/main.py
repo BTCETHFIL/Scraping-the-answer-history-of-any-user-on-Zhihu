@@ -18,7 +18,7 @@ if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
 # 确保工作目录在项目根目录
-os.chdir(Path(__file__).parent)
+os.chdir(Path(__file__).parent.parent)
 
 # 初始化日志（文件滚动覆盖，2MB×3）
 from log_setup import init_logging

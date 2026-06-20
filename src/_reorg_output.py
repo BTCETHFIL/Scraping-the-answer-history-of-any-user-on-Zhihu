@@ -11,7 +11,7 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='repla
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
-BASE = Path(__file__).parent
+BASE = Path(__file__).parent.parent
 MANUAL = BASE / "output" / "manual"
 UNKNOWN_DIR = MANUAL / "unknown"
 STATE_PATH = BASE / "browser_data" / "zhihu_state.json"
