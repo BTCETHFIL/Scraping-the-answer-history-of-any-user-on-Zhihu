@@ -17,6 +17,7 @@
 - **多用户批量** — 支持一次配置多个用户，依次爬取
 - **关键词过滤** — 支持多关键词（逗号/顿号/空格/分号分隔），标题或回答内容含任一关键词即抓取，不区分大小写，`answer_id` 自动去重不重复保存
 - **关键词分组管理** — 关键词保存为命名分组（如"蔚来相关"），一键应用；支持从 .txt 文件批量导入；自动记录最近使用的关键词
+- **用户分组管理** — 用户保存为命名分组（如"蔚来黑子"），一键应用/替换/合并；支持从 .txt 文件批量导入；自动记录最近使用的用户组合
 - **已抓取用户列表** — 自动生成 `已抓取用户列表.md`，包含每个用户的基本信息、抓取次数、累计回答数等统计
 - **系统 Chrome** — 支持配置已有 Chrome 路径，无需额外下载 Chromium
 - **测试模式** — 只爬取前 3 条，方便调试
@@ -94,8 +95,7 @@ output/
 | `output_dir` | `output` | 输出根目录 |
 | `headless` | `false` | 无头模式（后台运行，不显示浏览器窗口） |
 | `chrome_exe` | `""` | 本地 Chrome 路径，留空则使用 Playwright 自带 Chromium |
-| `forensic_mode` | `true` | 法务证据模式：保存 HTML |
-| `save_html` | `false` | 单独保存原始 HTML（法务模式自动开启） |
+| `forensic_mode` | `true` | 法务证据模式：自动保存 HTML + 证据报告 + SHA256 |
 | `cache_ttl_minutes` | `30` | 短时缓存有效期（分钟），0 = 禁用 |
 | `force_no_cache` | `false` | 强制忽略所有缓存+进度，测试用 |
 | `scroll_delay_min` | `2.0` | 滚动加载最小延迟（秒） |
@@ -119,11 +119,13 @@ zhihu pa chong/
 ├── utils.py             # 工具函数（日期提取、文件名清理等）
 ├── id_manager.py        # 用户 ID 列表管理
 ├── keyword_manager.py    # 关键词分组管理（保存/导入/最近使用）
+├── user_manager.py       # 用户分组管理（保存/导入/最近使用）
 ├── config.py            # 配置数据类
 ├── config.example.json  # 配置文件模板
 ├── config.json          # 用户配置（不入库）
 ├── id_list.json         # ID 列表持久化
 ├── keyword_groups.json   # 关键词分组数据
+├── user_groups.json      # 用户分组数据
 ├── 已抓取用户列表.md     # 自动生成的用户抓取统计报告
 ├── requirements.txt     # Python 依赖
 ├── LICENSE              # MIT License

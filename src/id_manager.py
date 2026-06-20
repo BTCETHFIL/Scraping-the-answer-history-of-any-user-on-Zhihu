@@ -95,6 +95,11 @@ class IDManager:
             return True
         return False
 
+    def clear(self):
+        """清空所有用户"""
+        self.users.clear()
+        self.save()
+
     def find(self, user_id: str) -> UserEntry | None:
         """按 user_id 查找"""
         for u in self.users:

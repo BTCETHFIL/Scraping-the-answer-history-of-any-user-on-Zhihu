@@ -527,14 +527,16 @@ def crawl_answer_combined(page: Page, item: dict,
 
         # ── 4. 截图：仅问题+回答内容区（排除右侧栏），保存为独立 PNG ──
         screenshot_bytes = _capture_answer_area(page)
-        # 保存截图 PNG（与 MD 同目录，避免 base64 单行过长导致渲染失败）
+        # 保存截图 PNG（使用绝对路径，MD 移动后图片仍可加载）
         screenshot_filename = f"{answer_id}.png"
-        screenshot_rel = f"./{screenshot_filename}"
+        screenshot_ref = None
         if output_dir:
             try:
-                (Path(output_dir) / screenshot_filename).write_bytes(screenshot_bytes)
+                png_path = Path(output_dir).resolve() / screenshot_filename
+                png_path.write_bytes(screenshot_bytes)
+                screenshot_ref = str(png_path)  # 绝对路径引用
             except Exception:
-                screenshot_rel = None  # 写盘失败则跳过截图引用
+                screenshot_ref = None  # 写盘失败则跳过截图引用
 
         # ── 5. 提取文字内容 ──
         raw_html = page.content()
@@ -620,8 +622,8 @@ def crawl_answer_combined(page: Page, item: dict,
         lines.append("")
         lines.append("## 📸 原页面截图")
         lines.append("")
-        if screenshot_rel:
-            lines.append(f"![问题与回答截图]({screenshot_rel})")
+        if screenshot_ref:
+            lines.append(f"![问题与回答截图]({screenshot_ref})")
         else:
             lines.append("> ⚠ 截图保存失败")
         lines.append("")
@@ -879,12 +881,12 @@ def crawl_user_answers(page: Page, user_id: str,
                         content_skip += 1
                         continue
 
-                # 修复旧缓存中可能残留的 base64 截图引用 → 相对 PNG 引用
+                # 修复旧缓存中可能残留的 base64 截图引用 → 绝对 PNG 路径引用
                 md_to_save = result['md_text']
                 if 'data:image/png;base64,' in md_to_save:
                     md_to_save = re.sub(
                         r'!\[问题与回答截图\]\(data:image/png;base64,[^)]+\)',
-                        f'![问题与回答截图](./{aid}.png)',
+                        f'![问题与回答截图]({Path(output_dir).resolve() / f"{aid}.png"})',
                         md_to_save
                     )
                 fpath = save_answer(

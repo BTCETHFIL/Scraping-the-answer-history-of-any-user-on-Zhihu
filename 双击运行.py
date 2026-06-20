@@ -30,6 +30,7 @@ from utils import extract_user_id
 from auth import get_cookie_path, get_login_state_path, load_manual_cookies
 from id_manager import get_id_manager
 from keyword_manager import keyword_mgr
+from user_manager import user_mgr
 
 
 # ══════════════════════════════════════════════════════════
@@ -48,6 +49,45 @@ class LogRedirector(io.StringIO):
 
     def flush(self):
         pass
+
+
+# ══════════════════════════════════════════════════════════
+# ToolTip — 鼠标悬停提示
+# ══════════════════════════════════════════════════════════
+
+class ToolTip:
+    """鼠标悬停时弹出提示标签（400ms 延迟）"""
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tip_window = None
+        self._enter_id = None
+        widget.bind('<Enter>', self._schedule)
+        widget.bind('<Leave>', self._hide)
+        widget.bind('<Button-1>', self._hide)
+
+    def _schedule(self, event=None):
+        self._hide()
+        self._enter_id = self.widget.after(400, self._show)
+
+    def _show(self):
+        self._enter_id = None
+        x = self.widget.winfo_rootx() + 20
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+        self.tip_window = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x}+{y}")
+        ttk.Label(tw, text=self.text, justify='left',
+                  background="#ffffe0", relief='solid', borderwidth=1,
+                  font=("", 9), padding=(5, 3), wraplength=360).pack()
+
+    def _hide(self, event=None):
+        if self._enter_id:
+            self.widget.after_cancel(self._enter_id)
+            self._enter_id = None
+        if self.tip_window:
+            self.tip_window.destroy()
+            self.tip_window = None
 
 
 # ══════════════════════════════════════════════════════════
@@ -162,9 +202,37 @@ class ZhihuCrawlerGUI:
                                         foreground="gray")
         self._login_status.pack(side=tk.RIGHT, padx=10)
 
-        # 左侧面板
-        left_frame = ttk.Frame(main_frame, width=400)
-        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
+        # 左侧面板（Canvas + Scrollbar 支持滚动，内容多时不会挤出可视区）
+        left_outer = ttk.Frame(main_frame)
+        left_outer.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 4))
+        left_outer.grid_rowconfigure(0, weight=1)
+        left_outer.grid_columnconfigure(0, weight=1)
+
+        left_canvas = tk.Canvas(left_outer, highlightthickness=0)
+        left_scroll = ttk.Scrollbar(left_outer, orient=tk.VERTICAL, command=left_canvas.yview)
+        left_frame = ttk.Frame(left_canvas)
+
+        left_canvas.grid(row=0, column=0, sticky="nsew")
+        left_scroll.grid(row=0, column=1, sticky="ns")
+
+        left_frame.bind("<Configure>", lambda e: left_canvas.configure(scrollregion=left_canvas.bbox("all")))
+        left_win_id = left_canvas.create_window((0, 0), window=left_frame, anchor=tk.NW)
+        left_canvas.configure(yscrollcommand=left_scroll.set)
+
+        # 同步 Canvas 宽度 → 内部 Frame 宽度
+        def _on_left_canvas_resize(event):
+            left_canvas.itemconfig(left_win_id, width=event.width)
+        left_canvas.bind("<Configure>", _on_left_canvas_resize)
+
+        # 鼠标滚轮：鼠标悬停在左侧面板时滚轮滚动
+        def _on_left_mousewheel(event):
+            left_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        def _bind_left_wheel(event):
+            left_canvas.bind_all("<MouseWheel>", _on_left_mousewheel)
+        def _unbind_left_wheel(event):
+            left_canvas.unbind_all("<MouseWheel>")
+        left_canvas.bind("<Enter>", _bind_left_wheel)
+        left_canvas.bind("<Leave>", _unbind_left_wheel)
 
         # ── 目标用户 ──
         user_frame = ttk.LabelFrame(left_frame, text="目标用户", padding=6)
@@ -179,37 +247,89 @@ class ZhihuCrawlerGUI:
         self._quick_add_entry.bind('<FocusIn>', self._on_quick_add_focus_in)
         self._quick_add_entry.bind('<FocusOut>', self._on_quick_add_focus_out)
         self._quick_add_entry.bind('<Return>', self._add_user_from_entry)
-        ttk.Button(add_row, text="➕ 添加到列表",
-                   command=self._add_user_from_entry, width=12).pack(side=tk.LEFT, padx=(4, 0))
+        ToolTip(self._quick_add_entry, "输入知乎用户主页链接或用户ID\n支持格式: https://www.zhihu.com/people/xxx\n或纯用户ID (如: navisli)")
+        b = ttk.Button(add_row, text="➕ 添加到列表",
+                   command=self._add_user_from_entry, width=12)
+        b.pack(side=tk.LEFT, padx=(4, 0))
+        ToolTip(b, "将上方输入的用户添加到下方列表\n输入姓名或ID后点击即可加入")
 
-        # ID 列表
+        # 用户列表（Treeview，固定列宽 + 左对齐）
         list_frame = ttk.Frame(user_frame)
         list_frame.pack(fill=tk.BOTH, expand=True)
-        self._user_listbox = tk.Listbox(list_frame, height=5, selectmode=tk.EXTENDED,
-                                         font=("Consolas", 9),
-                                         exportselection=False)
-        self._user_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self._user_tree = ttk.Treeview(list_frame,
+                                        columns=("nickname", "user_id", "recent"),
+                                        show="headings", height=6, selectmode=tk.EXTENDED)
+        self._user_tree.heading("nickname", text="昵称")
+        self._user_tree.heading("user_id", text="用户ID")
+        self._user_tree.heading("recent", text="最近爬取")
+        self._user_tree.column("nickname", width=100, anchor=tk.W, minwidth=60)
+        self._user_tree.column("user_id", width=140, anchor=tk.W, minwidth=80)
+        self._user_tree.column("recent", width=180, anchor=tk.W, minwidth=100)
+        self._user_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL,
-                                   command=self._user_listbox.yview)
+                                   command=self._user_tree.yview)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self._user_listbox.config(yscrollcommand=scrollbar.set)
-        self._user_listbox.bind('<Double-1>', self._edit_nickname)
+        self._user_tree.configure(yscrollcommand=scrollbar.set)
+        self._user_tree.bind('<Double-1>', self._edit_nickname)
 
         # 列表操作按钮
         btn_row2 = ttk.Frame(user_frame)
         btn_row2.pack(fill=tk.X, pady=(4, 0))
-        ttk.Button(btn_row2, text="全选", command=self._select_all_users, width=6).pack(side=tk.LEFT, padx=(0, 4))
-        ttk.Button(btn_row2, text="全不选", command=self._deselect_all_users, width=6).pack(side=tk.LEFT, padx=(0, 4))
-        ttk.Button(btn_row2, text="✏ 编辑昵称", command=self._edit_nickname, width=10).pack(side=tk.LEFT, padx=(0, 4))
-        ttk.Button(btn_row2, text="📋 复制链接", command=self._copy_user_link, width=10).pack(side=tk.LEFT, padx=(0, 4))
-        ttk.Button(btn_row2, text="🗑 删除", command=self._delete_selected_users, width=8).pack(side=tk.LEFT, padx=(0, 4))
-        ttk.Button(btn_row2, text="🔄 刷新列表", command=self._refresh_user_list, width=10).pack(side=tk.LEFT)
+        b = ttk.Button(btn_row2, text="全选", command=self._select_all_users, width=6)
+        b.pack(side=tk.LEFT, padx=(0, 4))
+        ToolTip(b, "选中列表中所有用户\n爬取时只会处理选中的用户")
+        b = ttk.Button(btn_row2, text="全不选", command=self._deselect_all_users, width=6)
+        b.pack(side=tk.LEFT, padx=(0, 4))
+        ToolTip(b, "取消所有用户的选中状态")
+        b = ttk.Button(btn_row2, text="✏ 编辑昵称", command=self._edit_nickname, width=10)
+        b.pack(side=tk.LEFT, padx=(0, 4))
+        ToolTip(b, "修改选中用户的显示昵称\n双击列表项也可编辑")
+        b = ttk.Button(btn_row2, text="📋 复制链接", command=self._copy_user_link, width=10)
+        b.pack(side=tk.LEFT, padx=(0, 4))
+        ToolTip(b, "复制选中用户的知乎主页链接到剪贴板")
+        b = ttk.Button(btn_row2, text="🗑 删除", command=self._delete_selected_users, width=8)
+        b.pack(side=tk.LEFT, padx=(0, 4))
+        ToolTip(b, "从列表中删除选中的用户")
+        b = ttk.Button(btn_row2, text="🔄 刷新列表", command=self._refresh_user_list, width=10)
+        b.pack(side=tk.LEFT)
+        ToolTip(b, "刷新用户列表，显示最新的爬取历史")
         self._list_status = ttk.Label(btn_row2, text="", foreground="gray")
         self._list_status.pack(side=tk.RIGHT)
 
         # 初始化 ID 列表
         self._id_mgr = None
         self._refresh_user_list()
+
+        # ── 用户分组管理 ──
+        ug_row = ttk.Frame(user_frame)
+        ug_row.pack(fill=tk.X, pady=4)
+        ttk.Label(ug_row, text="👥 用户分组:", font=("", 8)).pack(side=tk.LEFT, padx=(0, 4))
+        self._user_group_var = tk.StringVar()
+        self._user_group_combo = ttk.Combobox(ug_row, textvariable=self._user_group_var,
+                                              width=14, state="readonly")
+        self._user_group_combo.pack(side=tk.LEFT, padx=2)
+        self._user_group_combo.bind("<<ComboboxSelected>>", self._on_user_group_selected)
+        ToolTip(self._user_group_combo, "选择预设的用户组，可一键批量选中\n先在下方管理分组中创建分组")
+        b = ttk.Button(ug_row, text="应用分组", command=self._apply_user_group, width=8)
+        b.pack(side=tk.LEFT, padx=2)
+        ToolTip(b, "将选中的用户分组应用到列表\n可选择替换或合并到已有列表")
+        b = ttk.Button(ug_row, text="保存为分组…", command=self._save_as_user_group, width=10)
+        b.pack(side=tk.LEFT, padx=2)
+        ToolTip(b, "将当前列表中选中的用户保存为一个分组\n方便下次一键加载")
+        b = ttk.Button(ug_row, text="管理分组…", command=self._manage_user_groups, width=9)
+        b.pack(side=tk.LEFT, padx=2)
+        ToolTip(b, "查看/编辑/删除已有的用户分组")
+        b = ttk.Button(ug_row, text="导入文件…", command=self._import_users_file, width=9)
+        b.pack(side=tk.LEFT, padx=2)
+        ToolTip(b, "从 .txt 文件批量导入用户\n每行格式: user_id 昵称（空格分隔）\n#开头表示注释")
+        # 最近使用
+        ttk.Label(ug_row, text="🕐", font=("", 8)).pack(side=tk.LEFT, padx=(8, 2))
+        self._user_recent_var = tk.StringVar()
+        self._user_recent_combo = ttk.Combobox(ug_row, textvariable=self._user_recent_var,
+                                               width=26, state="readonly")
+        self._user_recent_combo.pack(side=tk.LEFT, padx=2)
+        self._user_recent_combo.bind("<<ComboboxSelected>>", self._on_recent_users_selected)
+        ToolTip(self._user_recent_combo, "最近使用过的用户组合\n点击即可快速恢复之前抓取过的用户列表")
 
         # ── Cookie ──
         cookie_frame = ttk.LabelFrame(left_frame, text="登录 Cookie", padding=6)
@@ -219,12 +339,19 @@ class ZhihuCrawlerGUI:
         self._z_c0_entry.pack(fill=tk.X, pady=(2, 0))
         self._z_c0_entry.bind('<FocusIn>', self._on_cookie_focus_in)
         self._z_c0_entry.bind('<FocusOut>', self._on_cookie_focus_out)
+        ToolTip(self._z_c0_entry, "填入知乎 z_c0 Cookie 值\n登录知乎后从浏览器 F12 → Application → Cookies\n复制 z_c0 的 Value 粘贴到这里\n点击输入框可查看完整值，离开自动隐藏")
 
         btn_row = ttk.Frame(cookie_frame)
         btn_row.pack(fill=tk.X, pady=(4, 0))
-        ttk.Button(btn_row, text="保存 Cookie", command=self._save_cookies).pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(btn_row, text="检测登录状态", command=self._check_cookie).pack(side=tk.LEFT)
-        ttk.Button(btn_row, text="清除 Cookie", command=self._clear_cookies).pack(side=tk.LEFT, padx=(6, 0))
+        b = ttk.Button(btn_row, text="保存 Cookie", command=self._save_cookies)
+        b.pack(side=tk.LEFT, padx=(0, 6))
+        ToolTip(b, "将 Cookie 保存到 browser_data/cookies.json\n下次启动自动加载")
+        b = ttk.Button(btn_row, text="检测登录状态", command=self._check_cookie)
+        b.pack(side=tk.LEFT)
+        ToolTip(b, "检测当前是否有有效的登录状态\n🟢已登录 / 🟡有Cookie待验证 / 🔴未登录")
+        b = ttk.Button(btn_row, text="清除 Cookie", command=self._clear_cookies)
+        b.pack(side=tk.LEFT, padx=(6, 0))
+        ToolTip(b, "清除所有登录状态\n包括 storage_state 和手动 Cookie 文件")
 
         # ── 爬取设置 ──
         crawl_frame = ttk.LabelFrame(left_frame, text="爬取设置", padding=6)
@@ -236,11 +363,14 @@ class ZhihuCrawlerGUI:
         self._max_entry = ttk.Entry(row1, width=8)
         self._max_entry.insert(0, "0")
         self._max_entry.pack(side=tk.LEFT)
+        ToolTip(self._max_entry, "每个用户最多爬取的回答条数\n0 = 不限制（爬取全部可见回答）\n测试模式开启时自动设为3条")
         ttk.Label(row1, text="（0=全部）", foreground="gray").pack(side=tk.LEFT, padx=4)
         # 关键词搜索
         ttk.Label(row1, text="🔍 关键词:", foreground="#4ec9b0").pack(side=tk.LEFT, padx=(16, 0))
         self._keyword_entry = ttk.Entry(row1, width=20)
         self._keyword_entry.pack(side=tk.LEFT, padx=2)
+        self._keyword_entry.bind('<Return>', self._on_keyword_enter)
+        ToolTip(self._keyword_entry, "多关键词用逗号、顿号、空格、分号分隔\n如: AI, 人工智能、NLP\n标题或内容含任一关键词即保存\n不区分大小写，answer_id 自动去重\n回车确认并记录到最近使用")
         ttk.Label(row1, text="（多关键词用逗号分隔，标题/内容含任一即抓取，answer_id 自动去重）", foreground="gray",
                   font=("", 8)).pack(side=tk.LEFT)
 
@@ -253,10 +383,19 @@ class ZhihuCrawlerGUI:
                                          width=14, state="readonly")
         self._group_combo.pack(side=tk.LEFT, padx=2)
         self._group_combo.bind("<<ComboboxSelected>>", self._on_group_selected)
-        ttk.Button(row_kw, text="应用分组", command=self._apply_group, width=8).pack(side=tk.LEFT, padx=2)
-        ttk.Button(row_kw, text="保存为分组…", command=self._save_as_group, width=10).pack(side=tk.LEFT, padx=2)
-        ttk.Button(row_kw, text="管理分组…", command=self._manage_groups, width=9).pack(side=tk.LEFT, padx=2)
-        ttk.Button(row_kw, text="导入文件…", command=self._import_keywords_file, width=9).pack(side=tk.LEFT, padx=2)
+        ToolTip(self._group_combo, "选择预设的关键词组，可一键填入\n先在下方管理分组中创建关键词组")
+        b = ttk.Button(row_kw, text="应用分组", command=self._apply_group, width=8)
+        b.pack(side=tk.LEFT, padx=2)
+        ToolTip(b, "将选中分组的关键词填入上方输入框\n如已有内容则替换")
+        b = ttk.Button(row_kw, text="保存为分组…", command=self._save_as_group, width=10)
+        b.pack(side=tk.LEFT, padx=2)
+        ToolTip(b, "将当前输入框的关键词保存为一个分组\n方便下次一键加载")
+        b = ttk.Button(row_kw, text="管理分组…", command=self._manage_groups, width=9)
+        b.pack(side=tk.LEFT, padx=2)
+        ToolTip(b, "查看/编辑/删除已有的关键词分组")
+        b = ttk.Button(row_kw, text="导入文件…", command=self._import_keywords_file, width=9)
+        b.pack(side=tk.LEFT, padx=2)
+        ToolTip(b, "从 .txt 或 .csv 文件批量导入关键词\n支持逗号/换行分隔\n不区分大小写")
 
         # ── 最近使用关键词 ──
         row_recent = ttk.Frame(crawl_frame)
@@ -267,6 +406,7 @@ class ZhihuCrawlerGUI:
                                           width=50, state="readonly")
         self._recent_combo.pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
         self._recent_combo.bind("<<ComboboxSelected>>", self._on_recent_selected)
+        ToolTip(self._recent_combo, "最近使用过的关键词\n点击即可快速填入输入框")
 
         row2 = ttk.Frame(crawl_frame)
         row2.pack(fill=tk.X, pady=2)
@@ -274,31 +414,30 @@ class ZhihuCrawlerGUI:
         self._output_entry = ttk.Entry(row2)
         self._output_entry.insert(0, "output")
         self._output_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ToolTip(self._output_entry, "爬取结果的保存目录\n默认为程序文件夹下的 output/\n每个用户会创建独立子文件夹")
 
         row3 = ttk.Frame(crawl_frame)
         row3.pack(fill=tk.X, pady=2)
         ttk.Label(row3, text="Chrome 路径:", width=10).pack(side=tk.LEFT)
         self._chrome_entry = ttk.Entry(row3)
         self._chrome_entry.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ToolTip(self._chrome_entry, "Chrome 浏览器的可执行文件路径\n留空则使用 Playwright 内置的 Chromium")
 
         row4 = ttk.Frame(crawl_frame)
         row4.pack(fill=tk.X, pady=2)
         self._headless_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(row4, text="无头模式（后台运行）", variable=self._headless_var).pack(side=tk.LEFT)
+        cb = ttk.Checkbutton(row4, text="无头模式（后台运行）", variable=self._headless_var)
+        cb.pack(side=tk.LEFT)
+        ToolTip(cb, "不显示浏览器窗口，静默后台爬取\n节省资源但无法观察爬取过程\n首次使用建议关闭以确认登录正常")
         self._test_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(row4, text="🧪 测试模式（只爬3条）", variable=self._test_var,
-                        command=self._on_test_toggle).pack(side=tk.LEFT, padx=15)
-
-        row6 = ttk.Frame(crawl_frame)
-        row6.pack(fill=tk.X, pady=2)
+        cb = ttk.Checkbutton(row4, text="🧪 测试模式（只爬3条）", variable=self._test_var,
+                        command=self._on_test_toggle)
+        cb.pack(side=tk.LEFT, padx=10)
+        ToolTip(cb, "开启后只爬取最多3条回答\n有关键词时：5条/批筛选→标题≥3条即停\n适合测试 Cookie 和配置是否正常")
         self._forensic_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(row6, text="🔒 法务证据模式（保存HTML + 生成证据报告 + SHA256哈希）",
-                        variable=self._forensic_var,
-                        command=self._on_forensic_toggle).pack(side=tk.LEFT)
-        self._save_html_var = tk.BooleanVar(value=False)
-        self._save_html_cb = ttk.Checkbutton(row6, text="保存原始 HTML（法务模式默认开启）",
-                        variable=self._save_html_var)
-        self._save_html_cb.pack(side=tk.LEFT, padx=15)
+        cb = ttk.Checkbutton(row4, text="🔒 法务证据（HTML+证据报告+SHA256）", variable=self._forensic_var)
+        cb.pack(side=tk.LEFT, padx=10)
+        ToolTip(cb, "保存完整的 HTML 页面 + SHA256 校验文件\n作为法律取证证据\n会增加存储空间和爬取时间")
 
         # ── 延迟设置 ──
         delay_frame = ttk.LabelFrame(left_frame, text="延迟策略（秒）", padding=6)
@@ -311,33 +450,40 @@ class ZhihuCrawlerGUI:
         self._scroll_min = ttk.Entry(row_d1, width=4)
         self._scroll_min.insert(0, "2")
         self._scroll_min.pack(side=tk.LEFT)
+        ToolTip(self._scroll_min, "页面滚动间隔最小值（秒）\n程序会在最小~最大之间随机取值\n模拟人类浏览行为，防反爬")
         ttk.Label(row_d1, text="-").pack(side=tk.LEFT)
         self._scroll_max = ttk.Entry(row_d1, width=4)
         self._scroll_max.insert(0, "5")
         self._scroll_max.pack(side=tk.LEFT)
+        ToolTip(self._scroll_max, "页面滚动间隔最大值（秒）")
 
         # 翻页间隔
         ttk.Label(row_d1, text="  翻页:").pack(side=tk.LEFT)
         self._page_min = ttk.Entry(row_d1, width=4)
         self._page_min.insert(0, "3")
         self._page_min.pack(side=tk.LEFT)
+        ToolTip(self._page_min, "翻页间隔最小值（秒）\n知乎每页约显示20条\n翻页过快容易触发反爬")
         ttk.Label(row_d1, text="-").pack(side=tk.LEFT)
         self._page_max = ttk.Entry(row_d1, width=4)
         self._page_max.insert(0, "8")
         self._page_max.pack(side=tk.LEFT)
+        ToolTip(self._page_max, "翻页间隔最大值（秒）")
 
         # 缓存有效期
         ttk.Label(row_d1, text="  缓存(分):").pack(side=tk.LEFT)
         self._cache_ttl = ttk.Entry(row_d1, width=4)
         self._cache_ttl.insert(0, "30")
         self._cache_ttl.pack(side=tk.LEFT)
+        ToolTip(self._cache_ttl, "页面缓存有效期（分钟）\n有效期内不会重复请求同一页面\n0 = 禁用缓存，每次都重新请求")
         ttk.Label(row_d1, text="(0=禁用)", foreground="gray").pack(side=tk.LEFT, padx=2)
 
         row_d4 = ttk.Frame(delay_frame)
         row_d4.pack(fill=tk.X, pady=(4, 2))
         self._force_no_cache_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(row_d4, text="🔄 强制忽略缓存（测试用：跳过所有缓存+进度，从头重爬）",
-                        variable=self._force_no_cache_var).pack(side=tk.LEFT)
+        cb = ttk.Checkbutton(row_d4, text="🔄 强制忽略缓存（测试用：跳过所有缓存+进度，从头重爬）",
+                        variable=self._force_no_cache_var)
+        cb.pack(side=tk.LEFT)
+        ToolTip(cb, "忽略所有缓存和爬取进度\n每次从头重新爬取\n适合测试期间使用，正常使用不建议勾选")
 
         # ── 操作控制 ──
         action_frame = ttk.LabelFrame(left_frame, text="操作", padding=6)
@@ -345,6 +491,7 @@ class ZhihuCrawlerGUI:
 
         self._progress = ttk.Progressbar(action_frame, mode='determinate')
         self._progress.pack(fill=tk.X, pady=(0, 4))
+        ToolTip(self._progress, "爬取进度条：每个用户完成后前进一格")
 
         ctrl_row = ttk.Frame(action_frame)
         ctrl_row.pack(fill=tk.X)
@@ -353,16 +500,11 @@ class ZhihuCrawlerGUI:
         self._stop_btn = ttk.Button(ctrl_row, text="■ 停止",
                                      command=self._stop_crawl, state=tk.DISABLED, width=10)
         self._stop_btn.pack(side=tk.RIGHT, padx=(4, 0))
+        ToolTip(self._stop_btn, "停止正在进行的爬取任务\n已爬取的数据不会丢失\n请等待当前页面处理完成")
         self._start_btn = ttk.Button(ctrl_row, text="▶ 开始爬取",
                                       command=self._start_crawl, width=14)
         self._start_btn.pack(side=tk.RIGHT)
-
-        # 已抓取用户列表按钮
-        ctrl_row2 = ttk.Frame(action_frame)
-        ctrl_row2.pack(fill=tk.X, pady=(4, 0))
-        self._report_btn = ttk.Button(ctrl_row2, text="📋 刷新已抓取用户列表",
-                                      command=self._refresh_crawled_users_report, width=22)
-        self._report_btn.pack(side=tk.LEFT)
+        ToolTip(self._start_btn, "开始爬取选中用户的回答\n⚠ 请先在「目标用户」列表中选中用户\n如未选中用户会有提示")
 
         # ── 手动链接保存（独立功能区）──
         ttk.Separator(left_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(12, 2))
@@ -378,15 +520,18 @@ class ZhihuCrawlerGUI:
         self._manual_text.bind('<FocusIn>', self._on_manual_focus_in)
         self._manual_text.bind('<FocusOut>', self._on_manual_focus_out)
         self._manual_text.pack(fill=tk.X)
+        ToolTip(self._manual_text, "粘贴知乎回答链接，每行一条\n支持 App 复制格式（含文字描述）\n上限 100 条，超出可用导入文件功能分批处理\n格式: https://www.zhihu.com/question/xxx/answer/xxx")
 
         manual_btn_row = ttk.Frame(manual_frame)
         manual_btn_row.pack(fill=tk.X, pady=(4, 0))
         self._manual_btn = ttk.Button(manual_btn_row, text="📝 批量保存为 MD",
                                       command=self._save_manual_urls, width=16)
         self._manual_btn.pack(side=tk.LEFT)
+        ToolTip(self._manual_btn, "将上方粘贴的知乎回答链接逐条抓取\n保存为 Markdown 文件\n无需预配置目标用户\n最多同时处理 100 条，超量自动分批")
         self._import_btn = ttk.Button(manual_btn_row, text="📂 导入文件",
                                       command=self._import_link_file, width=12)
         self._import_btn.pack(side=tk.RIGHT)
+        ToolTip(self._import_btn, "从 .txt/.csv 文件导入链接\n自动提取知乎链接并去重\n超 100 条自动分批显示")
         ttk.Label(manual_btn_row, text="支持: https://www.zhihu.com/question/xxx/answer/xxx",
                   foreground="gray", font=("", 8)).pack(side=tk.LEFT, padx=8)
 
@@ -396,12 +541,14 @@ class ZhihuCrawlerGUI:
         split_row.pack(fill=tk.X, pady=(0, 4))
         ttk.Label(split_row, text="🔧 工具",
                   font=("", 9, "bold"), foreground="#888").pack(side=tk.LEFT)
-        ttk.Button(split_row, text="✂ 分割大MD（>10MB按标题拆分）",
-                   command=self._split_large_md_file, width=28).pack(side=tk.LEFT, padx=(8, 0))
+        b = ttk.Button(split_row, text="✂ 分割大MD（>10MB按标题拆分）",
+                   command=self._split_large_md_file, width=28)
+        b.pack(side=tk.LEFT, padx=(8, 0))
+        ToolTip(b, "扫描 output 目录中超过 10MB 的 Markdown 文件\n按二级标题（## ）自动分割为小文件\n分块命名: 原文件名(1).md / (2).md ...\n分割后原大文件会被删除")
 
-        # 右侧面板: 日志
-        right_frame = ttk.Frame(main_frame, width=420)
-        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(4, 0))
+        # 右侧面板: 日志（缩小宽度，给左侧功能区更多空间）
+        right_frame = ttk.Frame(main_frame, width=320)
+        right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=False, padx=(4, 0))
 
         log_frame = ttk.LabelFrame(right_frame, text="运行日志", padding=4)
         log_frame.pack(fill=tk.BOTH, expand=True)
@@ -438,16 +585,18 @@ class ZhihuCrawlerGUI:
         return self._id_mgr
 
     def _refresh_user_list(self):
-        """刷新用户列表显示"""
-        self._user_listbox.delete(0, tk.END)
+        """刷新用户列表显示（Treeview 三列：昵称 / 用户ID / 最近爬取）"""
+        for item in self._user_tree.get_children():
+            self._user_tree.delete(item)
         mgr = self._get_id_manager()
         for nickname, user_id, url in mgr.get_display_list():
             history = mgr.get_crawl_history(user_id)
             hist_info = ""
             if history:
                 last = history[-1]
-                hist_info = f" | 最近: {last['date'][:16]}, {last['answers_scraped']}条"
-            self._user_listbox.insert(tk.END, f"{nickname}    ({user_id})    🔗 {url}{hist_info}")
+                hist_info = f"{last['date'][:16]}, {last['answers_scraped']}条"
+            self._user_tree.insert("", tk.END, iid=user_id,
+                                    values=(nickname, user_id, hist_info))
         total = len(mgr.users)
         self._list_status.config(
             text=f"共 {total} 个用户"
@@ -473,11 +622,9 @@ class ZhihuCrawlerGUI:
             self._quick_add_entry.delete(0, tk.END)
             self._refresh_user_list()
             # 自动选中新添加的
-            for i in range(self._user_listbox.size()):
-                if user_id in self._user_listbox.get(i):
-                    self._user_listbox.selection_set(i)
-                    self._user_listbox.see(i)
-                    break
+            if self._user_tree.exists(user_id):
+                self._user_tree.selection_add(user_id)
+                self._user_tree.see(user_id)
             self._log(f"✅ 已添加用户: {user_id}", 'success')
         else:
             messagebox.showinfo("已存在", f"用户 {user_id} 已在列表中")
@@ -773,41 +920,32 @@ class ZhihuCrawlerGUI:
         threading.Thread(target=worker, daemon=True).start()
 
     def _select_all_users(self):
-        self._user_listbox.selection_set(0, tk.END)
+        for item in self._user_tree.get_children():
+            self._user_tree.selection_add(item)
 
     def _deselect_all_users(self):
-        self._user_listbox.selection_clear(0, tk.END)
+        for item in self._user_tree.get_children():
+            self._user_tree.selection_remove(item)
 
     def _delete_selected_users(self):
-        selected = self._user_listbox.curselection()
+        selected = self._user_tree.selection()
         if not selected:
             return
         if not messagebox.askyesno("确认", f"确定删除选中的 {len(selected)} 个用户吗？"):
             return
         mgr = self._get_id_manager()
-        for i in reversed(selected):
-            item_text = self._user_listbox.get(i)
-            # 提取 user_id: "昵称    (user_id)"
-            import re as _re
-            m = _re.search(r'\(([^)]+)\)', item_text)
-            if m:
-                mgr.remove(m.group(1))
+        for iid in selected:
+            mgr.remove(iid)  # iid 就是 user_id
         self._refresh_user_list()
         self._log(f"🗑 已删除 {len(selected)} 个用户", 'info')
 
     def _copy_user_link(self):
         """复制选中用户的页面链接到剪贴板"""
-        selected = self._user_listbox.curselection()
+        selected = self._user_tree.selection()
         if not selected:
             messagebox.showinfo("提示", "请先在列表中选中一个用户")
             return
-        idx = selected[0]
-        item_text = self._user_listbox.get(idx)
-        import re as _re
-        m = _re.search(r'\(([^)]+)\)', item_text)
-        if not m:
-            return
-        user_id = m.group(1)
+        user_id = selected[0]  # iid 就是 user_id
         mgr = self._get_id_manager()
         user = mgr.find(user_id)
         if not user:
@@ -820,16 +958,10 @@ class ZhihuCrawlerGUI:
 
     def _edit_nickname(self, event=None):
         """编辑选中用户的昵称"""
-        selected = self._user_listbox.curselection()
+        selected = self._user_tree.selection()
         if not selected:
             return
-        idx = selected[0]
-        item_text = self._user_listbox.get(idx)
-        import re as _re
-        m = _re.search(r'\(([^)]+)\)', item_text)
-        if not m:
-            return
-        user_id = m.group(1)
+        user_id = selected[0]  # iid 就是 user_id
         mgr = self._get_id_manager()
         user = mgr.find(user_id)
         if not user:
@@ -872,10 +1004,12 @@ class ZhihuCrawlerGUI:
             self._login_status.config(text="🔴 未登录", foreground="#f44747")
 
     def _mask_cookie(self, val: str) -> str:
-        """前6位可见 + **** + 后4位可见"""
-        if not val or len(val) < 8:
-            return val
-        return f"{val[:6]}****{val[-4:]}"
+        """显示 Cookie 首尾部分便于识别"""
+        if not val:
+            return "(未设置)"
+        if len(val) <= 12:
+            return val[:4] + "****"
+        return f"Cookie({len(val)}字) 前:{val[:15]} / 后:{val[-15:]}"
 
     def _on_cookie_focus_in(self, event=None):
         """点击输入框 → 显示完整cookie"""
@@ -950,8 +1084,6 @@ class ZhihuCrawlerGUI:
         self._headless_var.set(self._cfg.headless)
         self._test_var.set(self._cfg.test_mode)
         self._forensic_var.set(self._cfg.forensic_mode)
-        self._save_html_var.set(self._cfg.save_html)
-        self._on_forensic_toggle()  # 初始同步 save_html 状态
         self._scroll_min.delete(0, tk.END)
         self._scroll_min.insert(0, str(int(self._cfg.scroll_delay_min)))
         self._scroll_max.delete(0, tk.END)
@@ -965,6 +1097,7 @@ class ZhihuCrawlerGUI:
         self._force_no_cache_var.set(self._cfg.force_no_cache)
         self._on_test_toggle()  # 初始同步「最多爬取」输入框的启用状态
         self._refresh_keyword_ui()  # 刷新关键词分组/最近使用下拉框
+        self._refresh_user_group_ui()  # 刷新用户分组下拉框
 
     def _read_config_from_ui(self):
         """从 UI 读取配置，更新 Config 对象"""
@@ -995,12 +1128,10 @@ class ZhihuCrawlerGUI:
         self._cfg.screenshot_mode = True
         self._cfg.test_mode = self._test_var.get()
         self._cfg.forensic_mode = self._forensic_var.get()
-        self._cfg.save_html = self._save_html_var.get()
         self._cfg.force_no_cache = self._force_no_cache_var.get()
-        # 法务模式自动开启 save_html
+        # 法务模式自动开启 save_html（后台属性，不在 UI 显示）
         if self._cfg.forensic_mode:
             self._cfg.save_html = True
-            self._save_html_var.set(True)  # 同步 UI 复选框
 
         # 保存到文件
         self._cfg.save("config.json")
@@ -1019,13 +1150,258 @@ class ZhihuCrawlerGUI:
         else:
             self._max_entry.config(state=tk.NORMAL)
 
-    def _on_forensic_toggle(self):
-        """法务模式切换时联动 save_html 复选框"""
-        if self._forensic_var.get():
-            self._save_html_var.set(True)
-            self._save_html_cb.config(state=tk.DISABLED)
+    # ── 用户分组管理 ────────────────────────────────────
+
+    def _refresh_user_group_ui(self):
+        """刷新用户分组下拉框和最近使用下拉框"""
+        groups = user_mgr.group_names()
+        self._user_group_combo["values"] = groups if groups else ["（暂无分组）"]
+        recent = user_mgr.recent
+        self._user_recent_combo["values"] = recent if recent else ["（暂无记录）"]
+
+    def _on_user_group_selected(self, event=None):
+        """选中用户分组时预览用户列表（不自动应用）"""
+        name = self._user_group_var.get()
+        if not name or name == "（暂无分组）":
+            return
+        g = user_mgr.get_group(name)
+        if g:
+            nicks = [u.get("nickname", u.get("user_id", "?")) for u in g.users[:5]]
+            preview = ", ".join(nicks)
+            if len(g.users) > 5:
+                preview += f" …(共{len(g.users)}人)"
+            self._log(f"👥 用户分组「{name}」: {preview}", "info")
+
+    def _apply_user_group(self):
+        """将选中分组的用户选中到目标列表（支持替换/合并）"""
+        name = self._user_group_var.get()
+        if not name or name == "（暂无分组）":
+            messagebox.showinfo("提示", "请先选择一个用户分组")
+            return
+        g = user_mgr.get_group(name)
+        if not g or not g.users:
+            messagebox.showinfo("提示", f"分组「{name}」为空")
+            return
+
+        mgr = self._get_id_manager()
+
+        # 询问替换或合并
+        existing = len(self._user_tree.get_children()) > 0
+        if existing:
+            choice = messagebox.askyesnocancel(
+                "应用用户分组",
+                f"将分组「{name}」({len(g.users)}人)应用到目标列表：\n\n"
+                f"「是」= 替换为分组用户\n"
+                f"「否」= 合并（添加分组用户到列表并选中）\n"
+                f"「取消」= 不操作"
+            )
+            if choice is None:
+                return
+            if choice is False:  # 合并
+                # 添加缺失用户到 IDManager
+                added = 0
+                for u in g.users:
+                    uid = u.get("user_id", "")
+                    nick = u.get("nickname", uid)
+                    url = f"https://www.zhihu.com/people/{uid}"
+                    if mgr.add(uid, nickname=nick, url=url):
+                        added += 1
+                # 选中分组用户
+                self._deselect_all_users()
+                self._refresh_user_list()
+                group_ids = {u.get("user_id", "") for u in g.users}
+                for iid in self._user_tree.get_children():
+                    if iid in group_ids:
+                        self._user_tree.selection_add(iid)
+                self._log(f"👥 合并分组「{name}」: 新增 {added} 人，共选中 {len(group_ids)} 人", "info")
+                # 记录最近
+                display = f"{name}: " + ", ".join(
+                    u.get("nickname", uid) for u in g.users[:10])
+                if len(g.users) > 10: display += f" …共{len(g.users)}人"
+                user_mgr.add_recent(display); self._refresh_user_group_ui()
+                return
+            # else: 替换，继续下面逻辑
+
+        # 替换模式：清空 IDManager，添加分组用户
+        mgr.clear()
+        for u in g.users:
+            uid = u.get("user_id", "")
+            nick = u.get("nickname", uid)
+            url = f"https://www.zhihu.com/people/{uid}"
+            mgr.add(uid, nickname=nick, url=url)
+        self._refresh_user_list()
+        # 全选
+        self._select_all_users()
+        # 记录最近
+        display = f"{name}: " + ", ".join(
+            u.get("nickname", u.get("user_id", "?")) for u in g.users[:10])
+        if len(g.users) > 10: display += f" …共{len(g.users)}人"
+        user_mgr.add_recent(display); self._refresh_user_group_ui()
+        self._log(f"👥 已应用用户分组「{name}」({len(g.users)}人)", "info")
+
+    def _save_as_user_group(self):
+        """将当前选中用户保存为用户分组"""
+        selected = self._user_tree.selection()
+        mgr = self._get_id_manager()
+        if selected:
+            # 仅保存选中的
+            users = []
+            for uid in selected:
+                user = mgr.find(uid)
+                users.append({"user_id": uid, "nickname": user.nickname if user else uid})
         else:
-            self._save_html_cb.config(state=tk.NORMAL)
+            # 全部用户
+            users = [{"user_id": u.user_id, "nickname": u.nickname}
+                     for u in mgr.users]
+        if not users:
+            messagebox.showwarning("提示", "用户列表为空")
+            return
+
+        dialog = tk.Toplevel(self.root)  # Note: uses self.root not self._root
+        dialog.title("保存用户分组")
+        dialog.geometry("380x180"); dialog.resizable(False, False)
+        dialog.transient(self.root); dialog.focus_set()
+        ttk.Label(dialog, text="分组名称:").pack(pady=(12, 2))
+        name_entry = ttk.Entry(dialog, width=40); name_entry.pack(padx=20, pady=2)
+        name_entry.focus_set()
+        ttk.Label(dialog, text="备注（可选）:", font=("", 8)).pack(pady=(8, 2))
+        note_entry = ttk.Entry(dialog, width=40); note_entry.pack(padx=20, pady=2)
+
+        def do_save():
+            name = name_entry.get().strip()
+            if not name:
+                messagebox.showwarning("提示", "请输入分组名称", parent=dialog)
+                return
+            is_new = user_mgr.add_group(name, users, note_entry.get().strip())
+            self._refresh_user_group_ui(); self._user_group_var.set(name)
+            act = "新建" if is_new else "更新（合并用户）"
+            self._log(f"💾 {act}用户分组「{name}」({len(users)}人)", "info")
+            dialog.destroy()
+
+        ttk.Button(dialog, text="保存", command=do_save).pack(pady=(12, 6))
+        dialog.bind("<Return>", lambda e: do_save())
+
+    def _manage_user_groups(self):
+        """管理用户分组（查看/编辑/删除）"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("管理用户分组"); dialog.geometry("580x460")
+        dialog.resizable(True, True)
+        dialog.transient(self.root); dialog.focus_set()
+        list_frame = ttk.Frame(dialog); list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        ttk.Label(list_frame, text="已有分组（选中后可编辑/删除）:", font=("", 9)).pack(anchor=tk.W)
+        lb = tk.Listbox(list_frame, height=8)
+        lb.pack(fill=tk.BOTH, expand=True, pady=4)
+        for g in user_mgr.groups:
+            lb.insert(tk.END, f"{g.name}  ({len(g.users)}人)")
+        ttk.Label(list_frame, text="用户列表（每行: user_id nickname）:", font=("", 9)).pack(anchor=tk.W, pady=(8, 0))
+        user_text = tk.Text(list_frame, height=8); user_text.pack(fill=tk.BOTH, expand=True, pady=4)
+        btn_frame = ttk.Frame(list_frame); btn_frame.pack(fill=tk.X, pady=6)
+
+        def on_select(evt=None):
+            sel = lb.curselection()
+            if sel:
+                g = user_mgr.groups[sel[0]]
+                user_text.delete("1.0", tk.END)
+                lines = [f"{u.get('user_id', '')} {u.get('nickname', '')}" for u in g.users]
+                user_text.insert("1.0", "\n".join(lines))
+        lb.bind("<<ListboxSelect>>", on_select)
+
+        def do_update():
+            sel = lb.curselection()
+            if not sel:
+                messagebox.showwarning("提示", "请先选择一个分组", parent=dialog); return
+            g = user_mgr.groups[sel[0]]
+            raw = user_text.get("1.0", tk.END).strip()
+            new_users = []; seen = set()
+            for line in raw.splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"): continue
+                parts = line.split(None, 1)
+                if parts:
+                    uid = parts[0]
+                    if uid in seen: continue
+                    seen.add(uid)
+                    nick = parts[1].strip() if len(parts) > 1 else uid
+                    new_users.append({"user_id": uid, "nickname": nick})
+            user_mgr.update_group_users(g.name, new_users)
+            self._refresh_user_group_ui()
+            self._log(f"✏ 已更新用户分组「{g.name}」({len(new_users)}人)", "info")
+            messagebox.showinfo("完成", f"分组「{g.name}」已更新", parent=dialog); dialog.destroy()
+
+        def do_delete():
+            sel = lb.curselection()
+            if not sel:
+                messagebox.showwarning("提示", "请先选择一个分组", parent=dialog); return
+            g = user_mgr.groups[sel[0]]
+            if messagebox.askyesno("确认删除", f"确定要删除用户分组「{g.name}」吗？", parent=dialog):
+                user_mgr.delete_group(g.name); self._refresh_user_group_ui()
+                self._log(f"🗑 已删除用户分组「{g.name}」", "warn"); dialog.destroy()
+
+        ttk.Button(btn_frame, text="💾 保存修改", command=do_update).pack(side=tk.LEFT, padx=4)
+        ttk.Button(btn_frame, text="🗑 删除分组", command=do_delete).pack(side=tk.LEFT, padx=4)
+        ttk.Button(btn_frame, text="关闭", command=dialog.destroy).pack(side=tk.RIGHT, padx=4)
+        if lb.size() > 0: lb.selection_set(0); on_select()
+
+    def _import_users_file(self):
+        """从文本文件导入用户列表"""
+        filepath = filedialog.askopenfilename(
+            title="选择用户列表文件",
+            filetypes=[("文本文件", "*.txt"), ("所有文件", "*.*")]
+        )
+        if not filepath: return
+        try:
+            users = user_mgr.import_from_file(filepath)
+            if not users:
+                messagebox.showwarning("导入结果", "文件中未找到有效用户"); return
+            mgr = self._get_id_manager()
+            existing = len(self._user_tree.get_children()) > 0
+            if existing:
+                choice = messagebox.askyesnocancel(
+                    "导入用户",
+                    f"从 {Path(filepath).name} 导入了 {len(users)} 个用户：\n\n"
+                    f"「是」= 替换当前列表\n"
+                    f"「否」= 合并到当前列表\n"
+                    f"「取消」= 不操作"
+                )
+                if choice is None: return
+                if choice is False:  # 合并
+                    added = 0
+                    for u in users:
+                        if mgr.add(u.get("user_id", ""), nickname=u.get("nickname", ""),
+                                    url=f"https://www.zhihu.com/people/{u.get('user_id', '')}"):
+                            added += 1
+                    self._refresh_user_list()
+                    self._log(f"📥 导入合并 {Path(filepath).name}: 新增 {added} 人", "info")
+                    return
+
+            # 替换模式
+            mgr.clear()
+            for u in users:
+                mgr.add(u.get("user_id", ""), nickname=u.get("nickname", ""),
+                         url=f"https://www.zhihu.com/people/{u.get('user_id', '')}")
+            self._refresh_user_list()
+            self._select_all_users()
+            self._log(f"📥 已导入 {len(users)} 个用户: {Path(filepath).name}", "info")
+        except Exception as e:
+            messagebox.showerror("导入失败", f"读取文件出错:\n{e}")
+
+    def _on_recent_users_selected(self, event=None):
+        """选中最近使用的用户分组时应用"""
+        val = self._user_recent_var.get()
+        if not val or val == "（暂无记录）": return
+        if ": " in val:
+            group_name = val.split(": ", 1)[0]
+            g = user_mgr.get_group(group_name)
+            if g and g.users:
+                mgr = self._get_id_manager()
+                mgr.clear()
+                for u in g.users:
+                    uid = u.get("user_id", "")
+                    mgr.add(uid, nickname=u.get("nickname", uid),
+                             url=f"https://www.zhihu.com/people/{uid}")
+                self._refresh_user_list(); self._select_all_users()
+                self._user_group_var.set(group_name)
+                self._log(f"🕐 已恢复用户分组「{group_name}」({len(g.users)}人)", "info")
 
     # ── 关键词分组管理 ────────────────────────────────────
 
@@ -1048,6 +1424,14 @@ class ZhihuCrawlerGUI:
                 preview += f" …(共{len(g.keywords)}个)"
             self._log(f"📂 分组「{name}」: {preview}", "info")
 
+    def _on_keyword_enter(self, event=None):
+        """关键词输入框回车：确认关键词并记录到最近使用"""
+        kw = self._keyword_entry.get().strip()
+        if kw:
+            keyword_mgr.add_recent(kw)
+            self._refresh_keyword_ui()
+            self._log(f"🔍 关键词已确认: {kw}", "info")
+
     def _apply_group(self):
         """将选中分组的全部关键词填入关键词输入框"""
         name = self._group_var.get()
@@ -1062,23 +1446,28 @@ class ZhihuCrawlerGUI:
             self._log(f"✅ 已应用分组「{name}」({len(g.keywords)}个关键词)", "info")
 
     def _save_as_group(self):
-        """将当前输入框的关键词保存为分组"""
+        """将当前输入框的关键词保存为分组（若选中已有分组则预填名称，保存时替换而非合并）"""
         kw_str = self._keyword_entry.get().strip()
         if not kw_str:
             messagebox.showwarning("提示", "请先在关键词输入框中输入关键词")
             return
 
         # 弹出命名对话框
-        dialog = tk.Toplevel(self._root)
+        dialog = tk.Toplevel(self.root)
         dialog.title("保存关键词分组")
         dialog.geometry("380x180")
         dialog.resizable(False, False)
-        dialog.transient(self._root)
-        dialog.grab_set()
+        dialog.transient(self.root)
+        dialog.focus_set()
 
         ttk.Label(dialog, text="分组名称:").pack(pady=(12, 2))
         name_entry = ttk.Entry(dialog, width=40)
         name_entry.pack(padx=20, pady=2)
+        # 预填当前选中的分组名（如果有）
+        current_name = self._group_var.get()
+        if current_name and current_name != "（暂无分组）":
+            name_entry.insert(0, current_name)
+            name_entry.selection_range(0, tk.END)
         name_entry.focus_set()
 
         ttk.Label(dialog, text="备注（可选）:", font=("", 8)).pack(pady=(8, 2))
@@ -1093,10 +1482,10 @@ class ZhihuCrawlerGUI:
             # 用 crawler 的 _split_keywords 保持拆分逻辑一致
             from crawler import _split_keywords
             kws = _split_keywords(kw_str)
-            is_new = keyword_mgr.add_group(name, kws, note_entry.get().strip())
+            is_new = keyword_mgr.add_group(name, kws, note_entry.get().strip(), replace=True)
             self._refresh_keyword_ui()
             self._group_var.set(name)
-            act = "新建" if is_new else "更新（合并关键词）"
+            act = "新建" if is_new else "更新（已替换）"
             self._log(f"💾 {act}分组「{name}」({len(kws)}个关键词)", "info")
             dialog.destroy()
 
@@ -1105,19 +1494,19 @@ class ZhihuCrawlerGUI:
 
     def _manage_groups(self):
         """管理关键词分组（查看/编辑/删除）"""
-        dialog = tk.Toplevel(self._root)
+        dialog = tk.Toplevel(self.root)
         dialog.title("管理关键词分组")
         dialog.geometry("520x420")
         dialog.resizable(True, True)
-        dialog.transient(self._root)
-        dialog.grab_set()
+        dialog.transient(self.root)
+        dialog.focus_set()
 
         # 分组列表
         list_frame = ttk.Frame(dialog)
         list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        ttk.Label(list_frame, text="已有分组（选中后可编辑/删除）:", font=("", 9)).pack(anchor=tk.W)
-        lb = tk.Listbox(list_frame, height=8)
+        ttk.Label(list_frame, text="已有分组（选中目标→粘贴关键词→保存）:", font=("", 9)).pack(anchor=tk.W)
+        lb = tk.Listbox(list_frame, height=8, exportselection=False)
         lb.pack(fill=tk.BOTH, expand=True, pady=4)
         for g in keyword_mgr.groups:
             lb.insert(tk.END, f"{g.name}  ({len(g.keywords)}个关键词)")
@@ -1131,14 +1520,17 @@ class ZhihuCrawlerGUI:
         btn_frame = ttk.Frame(list_frame)
         btn_frame.pack(fill=tk.X, pady=6)
 
-        def on_select(evt=None):
+        def load_selected():
+            """将选中分组的关键词加载到编辑区"""
             sel = lb.curselection()
             if sel:
                 g = keyword_mgr.groups[sel[0]]
                 kw_text.delete("1.0", tk.END)
                 kw_text.insert("1.0", ", ".join(g.keywords))
+            else:
+                messagebox.showwarning("提示", "请先在列表中选中一个分组", parent=dialog)
 
-        lb.bind("<<ListboxSelect>>", on_select)
+        # 显式"📥 加载"按钮才载入旧关键词，选择分组不会覆盖编辑区
 
         def do_update():
             sel = lb.curselection()
@@ -1166,14 +1558,14 @@ class ZhihuCrawlerGUI:
                 self._log(f"🗑 已删除分组「{g.name}」", "warn")
                 dialog.destroy()
 
+        ttk.Button(btn_frame, text="📥 加载", command=load_selected).pack(side=tk.LEFT, padx=4)
         ttk.Button(btn_frame, text="💾 保存修改", command=do_update).pack(side=tk.LEFT, padx=4)
         ttk.Button(btn_frame, text="🗑 删除分组", command=do_delete).pack(side=tk.LEFT, padx=4)
         ttk.Button(btn_frame, text="关闭", command=dialog.destroy).pack(side=tk.RIGHT, padx=4)
 
-        # 初始选中第一个
+        # 初始选中第一个（仅高亮，不填编辑区）
         if lb.size() > 0:
             lb.selection_set(0)
-            on_select()
 
     def _import_keywords_file(self):
         """从文本文件导入关键词"""
@@ -1211,22 +1603,16 @@ class ZhihuCrawlerGUI:
 
         self._read_config_from_ui()
 
-        # 从 ID 列表获取选中的用户
-        selected_indices = self._user_listbox.curselection()
-        if not selected_indices:
+        # 从用户列表获取选中的用户
+        selected_iids = self._user_tree.selection()
+        if not selected_iids:
             messagebox.showwarning("提示",
                 "请先在「目标用户」列表中选中要爬取的用户\n\n"
                 "如果列表为空，请在上方输入 URL 后点击「添加到列表」")
             return
 
-        # 提取选中的 user_id
-        import re as _re
-        user_ids = []
-        for idx in selected_indices:
-            item_text = self._user_listbox.get(idx)
-            m = _re.search(r'\(([^)]+)\)', item_text)
-            if m:
-                user_ids.append(m.group(1))
+        # iid 就是 user_id
+        user_ids = list(selected_iids)
 
         if not user_ids:
             messagebox.showwarning("提示", "无法解析选中的用户 ID")
