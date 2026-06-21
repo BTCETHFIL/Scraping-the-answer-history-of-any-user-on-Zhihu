@@ -53,28 +53,28 @@ def _split_keywords(keyword_str: str) -> list:
 
 
 def _any_keyword_matches(text: str, keywords: list) -> bool:
-    """检查文本是否精确匹配任一关键词（英文字母不区分大小写）。
+    """检查文本是否包含任一关键词（不区分大小写）。
     
     匹配规则：
-    - 纯英文关键词（如 ES、NIO）：前后须为非字母数字或字符串边界，
-      避免 "test" 误匹配 "ES"，同时兼容中文上下文（如 "蔚来ES" 中 "ES" 前为中文）。
-    - 含中文/混合关键词（如 蔚来、ES6）：大小写不敏感子串匹配
+    - 纯中文关键词：子串包含匹配（如"蔚来"匹配"蔚来汽车"）
+    - 含ASCII字母/数字的关键词（如 ES6、L60、NIO、baas）：前后须为非字母数字或字符串边界，
+      即 (?<![a-zA-Z0-9])kw(?![a-zA-Z0-9])，空间/汉字/符号均可通过
     - keywords 为空时返回 True（全部通过）
     """
     if not keywords:
         return True
     import re as _re
     for kw in keywords:
-        if kw.isascii() and kw.isalpha():
-            # 纯英文：前后边界 = 非字母数字 或 字符串首尾
-            # 不使用 \\b（Python中中文也是\\w，\\b在"蔚来ES"中不匹配），
-            # 改用 (?<![a-zA-Z0-9])...(?![a-zA-Z0-9]) 实现跨语言精确边界
+        # 判断是否含 ASCII 字母数字
+        has_ascii = any(c.isascii() and (c.isalpha() or c.isdigit()) for c in kw)
+        if has_ascii:
+            # 边界匹配：前后不能是字母数字
             escaped = _re.escape(kw)
             pattern = r'(?<![a-zA-Z0-9])' + escaped + r'(?![a-zA-Z0-9])'
             if _re.search(pattern, text, _re.IGNORECASE):
                 return True
         else:
-            # 含中文或混合：子串匹配
+            # 纯中文：子串匹配
             if kw.lower() in text.lower():
                 return True
     return False
@@ -1055,17 +1055,11 @@ def crawl_answer_combined(page: Page, item: dict,
             pass
         time.sleep(1)
 
-        # ── 4. 截图：仅问题+回答内容区（排除右侧栏），保存为独立 PNG ──
+        # ── 4. 截图：仅问题+回答内容区（排除右侧栏），base64嵌入MD（自包含便携）──
         screenshot_bytes = _capture_answer_area(page)
-        # 保存截图 PNG（使用相对路径 ./{aid}.png，MD 与 PNG 同目录）
-        screenshot_filename = f"{answer_id}.png"
-        screenshot_ref = f"./{screenshot_filename}"  # 相对路径，跨平台兼容
-        if output_dir:
-            try:
-                png_path = Path(output_dir).resolve() / screenshot_filename
-                png_path.write_bytes(screenshot_bytes)
-            except Exception:
-                screenshot_ref = None  # 写盘失败则跳过截图引用
+        screenshot_ref = None
+        if screenshot_bytes:
+            screenshot_ref = f"data:image/png;base64,{base64.b64encode(screenshot_bytes).decode('ascii')}"
 
         # ── 5. 提取文字内容 ──
         raw_html = page.content()
@@ -1440,15 +1434,7 @@ def crawl_user_answers(page: Page, user_id: str,
                         ).decode('ascii')
                     save_answer_cache(output_dir, aid, cache_result)
             if result and result['md_text']:
-                # 修复旧缓存中可能残留的 base64 截图引用 → 相对 PNG 路径引用
                 md_to_save = result['md_text']
-                if 'data:image/png;base64,' in md_to_save:
-                    # 使用 lambda 替换避免 Windows 路径中的反斜杠被 re.sub 误解析为正则转义
-                    md_to_save = re.sub(
-                        r'!\[问题与回答截图\]\(data:image/png;base64,[^)]+\)',
-                        lambda m, _aid=aid: f'![问题与回答截图](./{_aid}.png)',
-                        md_to_save
-                    )
                 fpath = save_answer(
                     output_dir,
                     result['meta'],
@@ -1763,13 +1749,10 @@ def crawl_single_url(page: Page, url: str, output_dir: str = None,
             user_dir.mkdir(parents=True, exist_ok=True)
 
         # ── 保存截图 PNG（与 MD 同目录）──
-        screenshot_filename = f"{answer_id}.png"
-        png_path = user_dir / screenshot_filename
         screenshot_md = ""
-        try:
-            png_path.write_bytes(screenshot_bytes)
-            screenshot_md = f"![问题与回答截图](./{screenshot_filename})"
-        except Exception:
+        if screenshot_bytes:
+            screenshot_md = f"![问题与回答截图](data:image/png;base64,{base64.b64encode(screenshot_bytes).decode('ascii')})"
+        else:
             screenshot_md = "> ⚠ 截图保存失败"
         # 替换占位符
         md_text = md_text.replace("{SCREENSHOT_PLACEHOLDER}", screenshot_md)

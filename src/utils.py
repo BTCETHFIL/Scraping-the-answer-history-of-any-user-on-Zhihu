@@ -200,52 +200,29 @@ def get_user_dirname(user_id: str, nickname: str = "") -> str:
 
 
 def get_output_path(output_dir: str, user_id: str, nickname: str = "") -> Path:
-    """获取用户的输出目录，如有昵称则加入目录名便于识别"""
-    dirname = get_user_dirname(user_id, nickname)
-    p = Path(output_dir) / dirname
-
+    """获取用户的输出目录。
+    
+    规则：
+    1. 如果 output 下已有匹配此 user_id 的目录（*_user_id 或纯 user_id），直接复用
+    2. 否则用当前昵称新建目录
+    3. 不会因昵称变化而反复迁移目录
+    """
     output_root = Path(output_dir)
+    output_root.mkdir(parents=True, exist_ok=True)
 
-    # ── 合并所有同 userId 的历史目录到当前目录 ──
-    # 扫描 output 下所有匹配 *_user_id 或纯 user_id 的目录
-    sibling_dirs = []
+    # 优先复用已存在的目录
     for d in output_root.iterdir():
         if not d.is_dir():
             continue
         d_name = d.name
-        # 匹配：纯 user_id 或 以 _user_id 结尾的目录
         if d_name == user_id or d_name.endswith(f"_{user_id}"):
-            if d.resolve() != p.resolve():
-                sibling_dirs.append(d)
+            return d
 
-    for old_dir in sibling_dirs:
-        _migrate_dir(old_dir, p)
-
+    # 不存在则新建
+    dirname = get_user_dirname(user_id, nickname)
+    p = output_root / dirname
     p.mkdir(parents=True, exist_ok=True)
     return p
 
 
-def _migrate_dir(src: Path, dst: Path):
-    """将旧目录中的文件迁移到新目录"""
-    import shutil
-    dst.mkdir(parents=True, exist_ok=True)
-    moved = 0
-    for item in src.iterdir():
-        target = dst / item.name
-        if not target.exists():
-            try:
-                shutil.move(str(item), str(target))
-                moved += 1
-            except Exception:
-                pass
-    if moved > 0:
-        msg = f"📦 已将旧目录内容迁移: {src.name} → {dst.name}"
-        print(msg)
-        logger.info(msg)
-    # 源目录为空则删除
-    try:
-        remaining = list(src.iterdir())
-        if not remaining:
-            src.rmdir()
-    except Exception:
-        pass
+

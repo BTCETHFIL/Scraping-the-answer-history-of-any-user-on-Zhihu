@@ -385,11 +385,57 @@ def _get_cache_root() -> Path:
 
 def _cache_dir(output_dir: Path) -> Path:
     """
-    返回用户缓存目录（cache_data/{user_dir_name}/.cache/）
-    自动从旧位置 output/{user_dir_name}/.cache/ 迁移
+    返回用户缓存目录（cache_data/{dir_name}/.cache/）
+
+    规则：
+    1. 收集 cache_data/ 下所有匹配此用户的目录（同名 或 同 uid 后缀）
+    2. 如果找到多个 → 合并缓存文件到主目录，避免数据分散
+    3. 都不存在则新建
+    4. 自动从旧位置 output/{user_dir_name}/.cache/ 迁移
     """
-    user_key = output_dir.name  # e.g., "nickname_userid"
-    new_dir = _get_cache_root() / user_key / ".cache"
+    cache_root = _get_cache_root()
+
+    def _has_cache(d: Path) -> bool:
+        c = d / ".cache"
+        return (c / "links.json").exists() or (c / "progress.json").exists()
+
+    dir_name = output_dir.name
+    uid = dir_name.rsplit('_', 1)[-1] if '_' in dir_name else ""
+
+    # 收集所有匹配的目录
+    candidates = []
+    for d in cache_root.iterdir():
+        if not d.is_dir() or not _has_cache(d):
+            continue
+        d_name = d.name
+        if d_name == dir_name:
+            candidates.append(d)
+        elif uid and (d_name == uid or d_name.endswith(f"_{uid}")):
+            candidates.append(d)
+
+    if candidates:
+        # 同名目录优先做主目录
+        primary = next((d for d in candidates if d.name == dir_name), candidates[0])
+        primary_cache = primary / ".cache"
+        primary_cache.mkdir(parents=True, exist_ok=True)
+        # 从其他候选目录合并所有缓存文件
+        for other in candidates:
+            if other == primary:
+                continue
+            other_cache = other / ".cache"
+            for src in other_cache.iterdir():
+                if not src.is_file():
+                    continue
+                dst = primary_cache / src.name
+                if not dst.exists():
+                    try:
+                        shutil.copy2(str(src), str(dst))
+                    except Exception:
+                        pass
+        return primary_cache
+
+    # 不存在则新建
+    new_dir = cache_root / dir_name / ".cache"
     old_dir = output_dir / ".cache"
 
     # 一次性迁移：旧位置有缓存但新位置没有 → 复制
