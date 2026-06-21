@@ -217,8 +217,10 @@ class IDManager:
         # 统计
         total_users = len(self.users)
         crawled_users = sum(1 for u in self.users if self.get_crawl_history(u.user_id))
+        # 用 max 而非 sum：answers_scraped 是每次会话的增量（旧数据）或总数（新数据），
+        # sum 会严重重复计数。max 取各会话峰值作为最佳估计。
         total_answers = sum(
-            sum(r.get('answers_scraped', 0) for r in self.get_crawl_history(u.user_id))
+            max((r.get('answers_scraped', 0) for r in self.get_crawl_history(u.user_id)), default=0)
             for u in self.users
         )
         total_md_files = 0
@@ -258,8 +260,8 @@ class IDManager:
             for i, u in enumerate(crawled_list, 1):
                 hist = self.get_crawl_history(u.user_id)
                 last_date = hist[-1].get('date', '')[:16] if hist else '-'
-                # 日志记录的回答总数
-                log_ans = sum(r.get('answers_scraped', 0) for r in hist)
+                # 日志记录的回答数（max 取会话峰值，避免增量重复计数）
+                log_ans = max((r.get('answers_scraped', 0) for r in hist), default=0)
 
                 # 本地 MD 文件数（按分辨率路径去重，历史路径不存在时回退 *_user_id 扫描）
                 md_count = 0

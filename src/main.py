@@ -252,14 +252,15 @@ def main():
         print(f"   跳过重复: {total_skip} 条")
         print(f"   输出目录: {Path(config.output_dir).resolve()}")
 
-        # 记录爬取历史到 id_manager（仅当有新增回答时）
+        # 记录爬取历史到 id_manager（用 total 累计总数，非 success 增量）
         from id_manager import get_id_manager
         mgr = get_id_manager()
         for r in results:
-            if r.get('success', 0) > 0:
+            total_after = r.get('total', 0)
+            if total_after > 0:
                 mgr.add_crawl_record(
                     r['user_id'],
-                    r.get('success', 0),
+                    total_after,
                     r.get('output_dir', str(Path(config.output_dir) / r['user_id']))
                 )
 

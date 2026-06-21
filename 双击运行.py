@@ -2110,13 +2110,14 @@ class ZhihuCrawlerGUI:
                                               keyword=keyword,
                                               scroll_only=scroll_only)
                         results.append(r)
-                        # 记录爬取历史（仅当有新增回答时）
-                        if r.get('success', 0) > 0:
+                        # 记录爬取历史（用 total 累计总数，非 success 增量）
+                        total_after = r.get('total', 0)
+                        if total_after > 0:
                             from id_manager import get_id_manager
                             mgr = get_id_manager()
                             mgr.add_crawl_record(
                                 uid,
-                                r.get('success', 0),
+                                total_after,
                                 r.get('output_dir', str(Path(self._cfg.output_dir) / uid))
                             )
                     except Exception as e:
