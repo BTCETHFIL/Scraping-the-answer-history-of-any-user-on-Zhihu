@@ -176,6 +176,18 @@ class IDManager:
 
     # ── 已抓取用户列表报告 ────────────────────────────
 
+    @staticmethod
+    def _find_user_output_dirs(output_dir: '_Path', user_id: str) -> 'list[_Path]':
+        """查找用户在 output_dir 下的所有实际存在的目录（按 *_user_id 模式）"""
+        from pathlib import Path as _P
+        result = []
+        for d in output_dir.iterdir():
+            if not d.is_dir():
+                continue
+            if d.name == user_id or d.name.endswith(f"_{user_id}"):
+                result.append(d)
+        return result
+
     def build_crawled_users_report(self, output_root: str = "output") -> str:
         """
         生成「已抓取用户列表.md」的 Markdown 内容。
@@ -211,8 +223,10 @@ class IDManager:
         )
         total_md_files = 0
         for u in self.users:
-            # 扫描输出目录中的 MD 文件（按分辨率路径去重，防止同一目录被多次计数）
+            # 扫描输出目录中的 MD 文件（按分辨率路径去重）
             seen_dirs = set()
+            # 先从历史记录找，找不到则按 *_user_id 模式扫描
+            hist_dirs_found = False
             for hist in self.get_crawl_history(u.user_id):
                 od = _Path(hist.get('output_dir', ''))
                 if not od.is_absolute():
@@ -220,7 +234,14 @@ class IDManager:
                 resolved = od.resolve() if od.exists() else None
                 if resolved and resolved not in seen_dirs:
                     seen_dirs.add(resolved)
+                    hist_dirs_found = True
                     total_md_files += len(list(od.glob("*.md")))
+            # 回退：历史路径不存在时，按 *_user_id 模式扫描实际目录
+            if not hist_dirs_found:
+                for d in self._find_user_output_dirs(output_dir, u.user_id):
+                    if d not in seen_dirs:
+                        seen_dirs.add(d)
+                        total_md_files += len(list(d.glob("*.md")))
 
         lines.append(f"**总用户数**: {total_users} | **已抓取**: {crawled_users} | "
                      f"**已抓取回答**: {total_answers} 条 | **现存 MD 文件**: {total_md_files} 个")
@@ -240,9 +261,10 @@ class IDManager:
                 # 日志记录的回答总数
                 log_ans = sum(r.get('answers_scraped', 0) for r in hist)
 
-                # 本地 MD 文件数（按分辨率路径去重，防止同一目录被多次计数）
+                # 本地 MD 文件数（按分辨率路径去重，历史路径不存在时回退 *_user_id 扫描）
                 md_count = 0
                 seen_dirs = set()
+                hist_found = False
                 for h in hist:
                     od = _Path(h.get('output_dir', ''))
                     if not od.is_absolute():
@@ -250,7 +272,13 @@ class IDManager:
                     resolved = od.resolve() if od.exists() else None
                     if resolved and resolved not in seen_dirs:
                         seen_dirs.add(resolved)
+                        hist_found = True
                         md_count += len(list(od.glob("*.md")))
+                if not hist_found:
+                    for d in self._find_user_output_dirs(output_dir, u.user_id):
+                        if d not in seen_dirs:
+                            seen_dirs.add(d)
+                            md_count += len(list(d.glob("*.md")))
 
                 # 交叉校验
                 if md_count == log_ans:
