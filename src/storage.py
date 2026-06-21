@@ -552,4 +552,95 @@ def clear_user_cache(output_dir: Path) -> int:
     return deleted
 
 
+# ── 法务模式转换：从缓存生成缺失的 HTML 文件 ──
+
+def convert_to_forensic_mode(output_dir: Path, log_cb=None) -> dict:
+    """
+    将已爬取的内容转换为法务证据格式（补生成 .html 文件）
+
+    原理：爬取时无论是否开启法务模式，crawl_answer_combined() 都会
+    将清洗后的 html_text 存入缓存。此函数从缓存读取 html_text，
+    为缺少 .html 文件的回答生成对应的 HTML 文件。
+
+    参数:
+        output_dir: 用户输出目录
+        log_cb: 可选日志回调 log_cb(msg, level)
+
+    返回:
+        {converted: N, already_had: N, no_cache_html: N, no_cache: N, total: N}
+    """
+    from pathlib import Path as _Path
+    completed_set, file_map = load_progress_with_files(_Path(output_dir))
+    if not completed_set:
+        if log_cb:
+            log_cb("  无已完成记录", 'dim')
+        return {'converted': 0, 'already_had': 0, 'no_cache_html': 0,
+                'no_cache': 0, 'total': 0}
+
+    output_dir = _Path(output_dir)
+    converted = 0
+    already_had = 0
+    no_cache_html = 0
+    no_cache = 0
+
+    for aid in sorted(completed_set):
+        # 确定 MD 文件名
+        fname = file_map.get(aid, '')
+        if fname:
+            md_stem = _Path(fname).stem
+        else:
+            # 旧格式无文件名映射：扫描目录
+            md_stem = None
+            for f in output_dir.glob("*.md"):
+                if aid in f.stem:
+                    md_stem = f.stem
+                    break
+
+        if not md_stem:
+            no_cache += 1
+            if log_cb:
+                log_cb(f"    ⚠ {aid}: 找不到对应 MD 文件", 'warning')
+            continue
+
+        html_path = output_dir / f"{md_stem}.html"
+        if html_path.exists():
+            already_had += 1
+            continue
+
+        # 从缓存读取 html_text
+        cached = load_answer_cache(output_dir, aid)
+        if not cached:
+            no_cache += 1
+            if log_cb:
+                log_cb(f"    ⚠ {aid}: 缓存已丢失，需重新爬取", 'warning')
+            continue
+
+        html_text = cached.get('html_text', '')
+        if not html_text:
+            no_cache_html += 1
+            if log_cb:
+                log_cb(f"    ⚠ {aid}: 缓存中无 html_text（旧版缓存），需重新爬取", 'warning')
+            continue
+
+        try:
+            html_path.write_text(html_text, encoding='utf-8')
+            converted += 1
+            if log_cb:
+                log_cb(f"    ✓ {html_path.name}", 'info')
+        except Exception as e:
+            if log_cb:
+                log_cb(f"    ✗ {html_path.name}: 写入失败 ({e})", 'error')
+
+    return {
+        'converted': converted,
+        'already_had': already_had,
+        'no_cache_html': no_cache_html,
+        'no_cache': no_cache,
+        'total': len(completed_set),
+    }
+
+
+
+
+
 

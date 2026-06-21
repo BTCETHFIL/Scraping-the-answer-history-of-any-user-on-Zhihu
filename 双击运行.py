@@ -300,6 +300,9 @@ class ZhihuCrawlerGUI:
         b = ttk.Button(btn_row2, text="🏠 访问主页", command=self._visit_user_homepage, width=10)
         b.pack(side=tk.LEFT, padx=(0, 4))
         ToolTip(b, "在浏览器中打开选中用户的知乎主页")
+        b = ttk.Button(btn_row2, text="🔒 生成HTML", command=self._convert_to_forensic, width=10)
+        b.pack(side=tk.LEFT, padx=(0, 4))
+        ToolTip(b, "将已抓取的回答转换为法务证据格式\n从缓存生成缺失的 .html 文件\n无需重新爬取")
         b = ttk.Button(btn_row2, text="🗑 删除", command=self._delete_selected_users, width=8)
         b.pack(side=tk.LEFT, padx=(0, 4))
         ToolTip(b, "从列表中删除选中的用户")
@@ -1074,6 +1077,57 @@ class ZhihuCrawlerGUI:
             webbrowser.open(url)
         self._list_status.config(text=f"已打开: {url}")
         self._log(f"🏠 已在浏览器中打开: {url}", 'info')
+
+    def _convert_to_forensic(self):
+        """将选中用户已抓取的回答转为法务证据格式（从缓存生成缺失的 .html）"""
+        selected = self._user_tree.selection()
+        if not selected:
+            messagebox.showinfo("提示", "请先在列表中选中用户")
+            return
+
+        from utils import get_output_path, get_user_dirname
+        from storage import convert_to_forensic_mode
+
+        # 确认操作
+        users_info = []
+        for iid in selected:
+            vals = self._user_tree.item(iid, 'values')
+            nickname = vals[0] if vals else iid
+            users_info.append((iid, nickname))
+        names = [n for _, n in users_info]
+        if not messagebox.askokcancel(
+            "转为法务证据",
+            f"将为以下用户的已抓取回答生成 .html 文件：\n\n"
+            f"{chr(10).join(f'  • {n}' for n in names)}\n\n"
+            f"此操作从缓存读取数据，无需重新爬取。\n"
+            f"已有 .html 的回答会被跳过。\n\n"
+            f"是否继续？"
+        ):
+            return
+
+        total_converted = 0
+        total_already = 0
+        total_missing = 0
+        for iid, nickname in users_info:
+            output_dir = get_output_path(self._cfg.output_dir, iid, nickname)
+            if not output_dir.exists():
+                self._log(f"⚠ {nickname}: 输出目录不存在，跳过", 'warning')
+                continue
+            self._log(f"🔒 转换中: {nickname} → {get_user_dirname(iid, nickname)}", 'info')
+            stats = convert_to_forensic_mode(output_dir, log_cb=self._log)
+            total_converted += stats['converted']
+            total_already += stats['already_had']
+            total_missing += stats['no_cache_html'] + stats['no_cache']
+
+        # 汇总
+        parts = [f"✅ 新生成: {total_converted} 个 .html"]
+        if total_already:
+            parts.append(f"已有: {total_already} 个")
+        if total_missing:
+            parts.append(f"⚠ 无法生成: {total_missing} 个（缓存缺失，需重新爬取）")
+        summary = " | ".join(parts)
+        self._list_status.config(text=summary)
+        self._log(summary, 'info')
 
     def _edit_nickname(self, event=None):
         """编辑选中用户的昵称（同时重命名已有文件夹）"""
