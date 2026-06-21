@@ -211,12 +211,15 @@ class IDManager:
         )
         total_md_files = 0
         for u in self.users:
-            # 扫描输出目录中的 MD 文件
+            # 扫描输出目录中的 MD 文件（按分辨率路径去重，防止同一目录被多次计数）
+            seen_dirs = set()
             for hist in self.get_crawl_history(u.user_id):
                 od = _Path(hist.get('output_dir', ''))
                 if not od.is_absolute():
                     od = output_dir / od.name if od.parts else output_dir / od
-                if od.exists():
+                resolved = od.resolve() if od.exists() else None
+                if resolved and resolved not in seen_dirs:
+                    seen_dirs.add(resolved)
                     total_md_files += len(list(od.glob("*.md")))
 
         lines.append(f"**总用户数**: {total_users} | **已抓取**: {crawled_users} | "
@@ -237,13 +240,16 @@ class IDManager:
                 # 日志记录的回答总数
                 log_ans = sum(r.get('answers_scraped', 0) for r in hist)
 
-                # 本地 MD 文件数（扫描所有历史 output_dir）
+                # 本地 MD 文件数（按分辨率路径去重，防止同一目录被多次计数）
                 md_count = 0
+                seen_dirs = set()
                 for h in hist:
                     od = _Path(h.get('output_dir', ''))
                     if not od.is_absolute():
                         od = output_dir / od.name if od.parts else output_dir / od
-                    if od.exists():
+                    resolved = od.resolve() if od.exists() else None
+                    if resolved and resolved not in seen_dirs:
+                        seen_dirs.add(resolved)
                         md_count += len(list(od.glob("*.md")))
 
                 # 交叉校验
