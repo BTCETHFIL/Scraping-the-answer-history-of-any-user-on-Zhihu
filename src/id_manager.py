@@ -153,15 +153,22 @@ class IDManager:
     # ── 爬取历史 ─────────────────────────────────────
 
     def add_crawl_record(self, user_id: str, answers_scraped: int,
-                         output_dir: str):
-        """记录一次爬取"""
+                         output_dir: str, scroll_only: bool = False):
+        """记录一次爬取
+
+        Args:
+            scroll_only: 仅滚屏收集链接，未实际生成 MD 文件 → 报告统计时跳过
+        """
         u = self.find(user_id)
         if u:
-            u.crawl_history.append({
+            entry = {
                 'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                 'answers_scraped': answers_scraped,
                 'output_dir': output_dir,
-            })
+            }
+            if scroll_only:
+                entry['scroll_only'] = True
+            u.crawl_history.append(entry)
             self.save()
 
     def get_crawl_history(self, user_id: str) -> list[dict]:
@@ -173,6 +180,49 @@ class IDManager:
         """获取最近一次爬取记录"""
         h = self.get_crawl_history(user_id)
         return h[-1] if h else None
+
+    def clean_inflated_history(self, output_root: str = "output") -> int:
+        """清理爬取历史中明显膨胀的条目（如滚屏阶段记录的 total=completed+pending）
+
+        规则：
+        1. 如果条目已有 scroll_only 标志 → 保留但报告跳过
+        2. 如果 answers_scraped 明显高于本地实际 MD 文件数
+           （阈值：> max(local_md + 5, local_md * 1.5)）→ 标记为 scroll_only
+        3. 如果 answers_scraped == 0 → 标记为 scroll_only（无新增）
+
+        返回修复的条目数。
+        """
+        from pathlib import Path as _P
+        output_dir = _P(output_root)
+        cleaned = 0
+
+        for u in self.users:
+            hist = u.crawl_history
+            if not hist:
+                continue
+
+            # 计算该用户的实际本地 MD 文件数
+            local_md = 0
+            for d in self._find_user_output_dirs(output_dir, u.user_id):
+                local_md += len([f for f in d.rglob('*.md') if f.name != 'INDEX.md'])
+
+            # 阈值：比本地文件多 5 个 或 多 50%，取较大者
+            threshold = max(local_md + 5, int(local_md * 1.5))
+
+            for r in hist:
+                # 已有 scroll_only 标志的跳过
+                if r.get('scroll_only', False):
+                    continue
+
+                ans = r.get('answers_scraped', 0)
+                # 标记条件：值明显超过本地文件数 或 值为 0
+                if ans == 0 or (local_md > 0 and ans > threshold):
+                    r['scroll_only'] = True
+                    cleaned += 1
+
+        if cleaned > 0:
+            self.save()
+        return cleaned
 
     # ── 已抓取用户列表报告 ────────────────────────────
 
@@ -217,10 +267,15 @@ class IDManager:
         # 统计
         total_users = len(self.users)
         crawled_users = sum(1 for u in self.users if self.get_crawl_history(u.user_id))
-        # 用 max 而非 sum：answers_scraped 是每次会话的增量（旧数据）或总数（新数据），
-        # sum 会严重重复计数。max 取各会话峰值作为最佳估计。
+        # 用 max 而非 sum：answers_scraped 每次会话含义不稳定（旧增量/新总数/滚屏合计），
+        # max 取非滚屏会话峰值。滚屏（scroll_only）不生成 MD，不计入统计。
+        def _max_ans_hist(hist_list):
+            non_scroll = [r.get('answers_scraped', 0)
+                          for r in hist_list if not r.get('scroll_only', False)]
+            return max(non_scroll) if non_scroll else 0
+
         total_answers = sum(
-            max((r.get('answers_scraped', 0) for r in self.get_crawl_history(u.user_id)), default=0)
+            _max_ans_hist(self.get_crawl_history(u.user_id))
             for u in self.users
         )
         total_md_files = 0
@@ -260,8 +315,8 @@ class IDManager:
             for i, u in enumerate(crawled_list, 1):
                 hist = self.get_crawl_history(u.user_id)
                 last_date = hist[-1].get('date', '')[:16] if hist else '-'
-                # 日志记录的回答数（max 取会话峰值，避免增量重复计数）
-                log_ans = max((r.get('answers_scraped', 0) for r in hist), default=0)
+                # 日志记录的回答数（跳过滚屏条目，取非滚屏会话的峰值）
+                log_ans = _max_ans_hist(hist)
 
                 # 本地 MD 文件数（按分辨率路径去重，历史路径不存在时回退 *_user_id 扫描）
                 md_count = 0

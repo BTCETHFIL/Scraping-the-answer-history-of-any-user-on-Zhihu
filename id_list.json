@@ -34,7 +34,8 @@
         {
           "date": "2026-06-20 19:43:18",
           "answers_scraped": 0,
-          "output_dir": "output\\祈祈_44-41-80-77"
+          "output_dir": "output\\祈祈_44-41-80-77",
+          "scroll_only": true
         },
         {
           "date": "2026-06-20 20:02:12",
@@ -44,12 +45,14 @@
         {
           "date": "2026-06-20 20:31:41",
           "answers_scraped": 0,
-          "output_dir": "output\\祈祈_44-41-80-77"
+          "output_dir": "output\\祈祈_44-41-80-77",
+          "scroll_only": true
         },
         {
           "date": "2026-06-20 22:38:36",
           "answers_scraped": 0,
-          "output_dir": "output\\祈祈_44-41-80-77"
+          "output_dir": "output\\祈祈_44-41-80-77",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 00:04:20",
@@ -59,21 +62,36 @@
         {
           "date": "2026-06-21 06:46:18",
           "answers_scraped": 0,
-          "output_dir": "output\\祈祈_44-41-80-77"
+          "output_dir": "output\\祈祈_44-41-80-77",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:03:25",
           "answers_scraped": 0,
-          "output_dir": "output\\祈祈_44-41-80-77"
+          "output_dir": "output\\祈祈_44-41-80-77",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:56:32",
           "answers_scraped": 0,
-          "output_dir": "output\\祈祈_44-41-80-77"
+          "output_dir": "output\\祈祈_44-41-80-77",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:35:39",
           "answers_scraped": 0,
+          "output_dir": "output\\祈祈_44-41-80-77",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:10:42",
+          "answers_scraped": 1064,
+          "output_dir": "output\\祈祈_44-41-80-77",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:25:11",
+          "answers_scraped": 163,
           "output_dir": "output\\祈祈_44-41-80-77"
         }
       ],
@@ -83,7 +101,7 @@
       "user_id": "magiculture",
       "nickname": "magiculture",
       "url": "https://www.zhihu.com/people/magiculture",
-      "avatar_url": "https://pic1.zhimg.com/v2-abed1a8c04700ba7d72b45195223e0ff_l.jpg?source=32738c0c&needBackground=1",
+      "avatar_url": "https://picx.zhimg.com/v2-abed1a8c04700ba7d72b45195223e0ff_l.jpg?source=32738c0c&needBackground=1",
       "crawl_history": [
         {
           "date": "2026-06-19 09:14:04",
@@ -98,7 +116,8 @@
         {
           "date": "2026-06-20 22:39:11",
           "answers_scraped": 0,
-          "output_dir": "output\\Magiculture自由_magiculture"
+          "output_dir": "output\\Magiculture自由_magiculture",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 00:10:05",
@@ -108,21 +127,36 @@
         {
           "date": "2026-06-21 06:46:26",
           "answers_scraped": 0,
-          "output_dir": "output\\Magiculture自由_magiculture"
+          "output_dir": "output\\Magiculture自由_magiculture",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:03:32",
           "answers_scraped": 0,
-          "output_dir": "output\\Magiculture自由_magiculture"
+          "output_dir": "output\\Magiculture自由_magiculture",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:56:40",
           "answers_scraped": 0,
-          "output_dir": "output\\Magiculture自由_magiculture"
+          "output_dir": "output\\Magiculture自由_magiculture",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:35:44",
           "answers_scraped": 0,
+          "output_dir": "output\\Magiculture自由_magiculture",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:10:52",
+          "answers_scraped": 42,
+          "output_dir": "output\\Magiculture自由_magiculture",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:25:18",
+          "answers_scraped": 23,
           "output_dir": "output\\Magiculture自由_magiculture"
         }
       ],
@@ -132,7 +166,7 @@
       "user_id": "lu-guo-63-72-64",
       "nickname": "晓看天色暮看云",
       "url": "https://www.zhihu.com/people/lu-guo-63-72-64",
-      "avatar_url": "https://picx.zhimg.com/v2-c314e67b2a1c51468b55059dff97c2ff_l.jpg?source=32738c0c&needBackground=1",
+      "avatar_url": "https://pica.zhimg.com/v2-c314e67b2a1c51468b55059dff97c2ff_l.jpg?source=32738c0c&needBackground=1",
       "crawl_history": [
         {
           "date": "2026-06-19 09:21:12",
@@ -142,7 +176,8 @@
         {
           "date": "2026-06-20 18:17:25",
           "answers_scraped": 0,
-          "output_dir": "output\\晓看天色暮看云​走走看看，就是人生_lu-guo-63-72-64"
+          "output_dir": "output\\晓看天色暮看云​走走看看，就是人生_lu-guo-63-72-64",
+          "scroll_only": true
         },
         {
           "date": "2026-06-20 18:35:34",
@@ -182,7 +217,8 @@
         {
           "date": "2026-06-20 22:39:20",
           "answers_scraped": 0,
-          "output_dir": "output\\晓看天色暮看云​走走看看，就是人生_lu-guo-63-72-64"
+          "output_dir": "output\\晓看天色暮看云​走走看看，就是人生_lu-guo-63-72-64",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 00:20:48",
@@ -192,21 +228,36 @@
         {
           "date": "2026-06-21 06:46:34",
           "answers_scraped": 0,
-          "output_dir": "output\\晓看天色暮看云​走走看看，就是人生_lu-guo-63-72-64"
+          "output_dir": "output\\晓看天色暮看云​走走看看，就是人生_lu-guo-63-72-64",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:03:38",
           "answers_scraped": 0,
-          "output_dir": "output\\晓看天色暮看云​走走看看，就是人生_lu-guo-63-72-64"
+          "output_dir": "output\\晓看天色暮看云​走走看看，就是人生_lu-guo-63-72-64",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:56:49",
           "answers_scraped": 0,
-          "output_dir": "output\\晓看天色暮看云​走走看看，就是人生_lu-guo-63-72-64"
+          "output_dir": "output\\晓看天色暮看云​走走看看，就是人生_lu-guo-63-72-64",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:35:49",
           "answers_scraped": 0,
+          "output_dir": "output\\晓看天色暮看云​走走看看，就是人生_lu-guo-63-72-64",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:11:02",
+          "answers_scraped": 145,
+          "output_dir": "output\\晓看天色暮看云​走走看看，就是人生_lu-guo-63-72-64",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:25:24",
+          "answers_scraped": 40,
           "output_dir": "output\\晓看天色暮看云​走走看看，就是人生_lu-guo-63-72-64"
         }
       ],
@@ -226,7 +277,8 @@
         {
           "date": "2026-06-20 22:40:30",
           "answers_scraped": 0,
-          "output_dir": "output\\罗伯特_luo-bo-te-6"
+          "output_dir": "output\\罗伯特_luo-bo-te-6",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 00:24:43",
@@ -236,21 +288,36 @@
         {
           "date": "2026-06-21 06:46:42",
           "answers_scraped": 0,
-          "output_dir": "output\\罗伯特_luo-bo-te-6"
+          "output_dir": "output\\罗伯特_luo-bo-te-6",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:03:42",
           "answers_scraped": 0,
-          "output_dir": "output\\罗伯特_luo-bo-te-6"
+          "output_dir": "output\\罗伯特_luo-bo-te-6",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:56:58",
           "answers_scraped": 0,
-          "output_dir": "output\\罗伯特_luo-bo-te-6"
+          "output_dir": "output\\罗伯特_luo-bo-te-6",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:35:56",
           "answers_scraped": 0,
+          "output_dir": "output\\罗伯特_luo-bo-te-6",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:11:11",
+          "answers_scraped": 110,
+          "output_dir": "output\\罗伯特_luo-bo-te-6",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:25:31",
+          "answers_scraped": 17,
           "output_dir": "output\\罗伯特_luo-bo-te-6"
         }
       ],
@@ -270,7 +337,8 @@
         {
           "date": "2026-06-20 22:41:34",
           "answers_scraped": 0,
-          "output_dir": "output\\无幽​_wu-you-86-68"
+          "output_dir": "output\\无幽​_wu-you-86-68",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 00:26:35",
@@ -280,21 +348,36 @@
         {
           "date": "2026-06-21 06:46:52",
           "answers_scraped": 0,
-          "output_dir": "output\\无幽​_wu-you-86-68"
+          "output_dir": "output\\无幽​_wu-you-86-68",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:04:05",
           "answers_scraped": 0,
-          "output_dir": "output\\无幽​_wu-you-86-68"
+          "output_dir": "output\\无幽​_wu-you-86-68",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:57:06",
           "answers_scraped": 0,
-          "output_dir": "output\\无幽​_wu-you-86-68"
+          "output_dir": "output\\无幽​_wu-you-86-68",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:36:01",
           "answers_scraped": 0,
+          "output_dir": "output\\无幽​_wu-you-86-68",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:11:19",
+          "answers_scraped": 116,
+          "output_dir": "output\\无幽​_wu-you-86-68",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:25:37",
+          "answers_scraped": 8,
           "output_dir": "output\\无幽​_wu-you-86-68"
         }
       ],
@@ -309,7 +392,8 @@
         {
           "date": "2026-06-20 22:43:49",
           "answers_scraped": 0,
-          "output_dir": "output\\Mr.Sam_Mr.Samuel"
+          "output_dir": "output\\Mr.Sam_Mr.Samuel",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 00:27:34",
@@ -319,21 +403,36 @@
         {
           "date": "2026-06-21 06:47:01",
           "answers_scraped": 0,
-          "output_dir": "output\\Mr.Sam_Mr.Samuel"
+          "output_dir": "output\\Mr.Sam_Mr.Samuel",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:04:11",
           "answers_scraped": 0,
-          "output_dir": "output\\Mr.Sam_Mr.Samuel"
+          "output_dir": "output\\Mr.Sam_Mr.Samuel",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:57:15",
           "answers_scraped": 0,
-          "output_dir": "output\\Mr.Sam_Mr.Samuel"
+          "output_dir": "output\\Mr.Sam_Mr.Samuel",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:36:06",
           "answers_scraped": 0,
+          "output_dir": "output\\Mr.Sam_Mr.Samuel",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:11:29",
+          "answers_scraped": 252,
+          "output_dir": "output\\Mr.Sam_Mr.Samuel",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:25:43",
+          "answers_scraped": 4,
           "output_dir": "output\\Mr.Sam_Mr.Samuel"
         }
       ],
@@ -343,12 +442,13 @@
       "user_id": "xiong-qia-67",
       "nickname": "熊卡",
       "url": "https://www.zhihu.com/people/xiong-qia-67",
-      "avatar_url": "https://picx.zhimg.com/v2-abed1a8c04700ba7d72b45195223e0ff_l.jpg?source=32738c0c&needBackground=1",
+      "avatar_url": "https://pic1.zhimg.com/v2-abed1a8c04700ba7d72b45195223e0ff_l.jpg?source=32738c0c&needBackground=1",
       "crawl_history": [
         {
           "date": "2026-06-20 22:47:30",
           "answers_scraped": 0,
-          "output_dir": "output\\熊卡观察，理解，践行_xiong-qia-67"
+          "output_dir": "output\\熊卡观察，理解，践行_xiong-qia-67",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 00:29:47",
@@ -358,21 +458,36 @@
         {
           "date": "2026-06-21 06:47:10",
           "answers_scraped": 0,
-          "output_dir": "output\\熊卡观察，理解，践行_xiong-qia-67"
+          "output_dir": "output\\熊卡观察，理解，践行_xiong-qia-67",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:04:17",
           "answers_scraped": 0,
-          "output_dir": "output\\熊卡观察，理解，践行_xiong-qia-67"
+          "output_dir": "output\\熊卡观察，理解，践行_xiong-qia-67",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:57:23",
           "answers_scraped": 0,
-          "output_dir": "output\\熊卡观察，理解，践行_xiong-qia-67"
+          "output_dir": "output\\熊卡观察，理解，践行_xiong-qia-67",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:36:11",
           "answers_scraped": 0,
+          "output_dir": "output\\熊卡观察，理解，践行_xiong-qia-67",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:11:39",
+          "answers_scraped": 415,
+          "output_dir": "output\\熊卡观察，理解，践行_xiong-qia-67",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:25:50",
+          "answers_scraped": 10,
           "output_dir": "output\\熊卡观察，理解，践行_xiong-qia-67"
         }
       ],
@@ -387,7 +502,8 @@
         {
           "date": "2026-06-20 22:48:44",
           "answers_scraped": 0,
-          "output_dir": "output\\小F全球最理智詹蜜_xiao-f-45-5"
+          "output_dir": "output\\小F全球最理智詹蜜_xiao-f-45-5",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 00:36:30",
@@ -397,21 +513,36 @@
         {
           "date": "2026-06-21 06:47:20",
           "answers_scraped": 0,
-          "output_dir": "output\\小F全球最理智詹蜜_xiao-f-45-5"
+          "output_dir": "output\\小F全球最理智詹蜜_xiao-f-45-5",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:04:22",
           "answers_scraped": 0,
-          "output_dir": "output\\小F全球最理智詹蜜_xiao-f-45-5"
+          "output_dir": "output\\小F全球最理智詹蜜_xiao-f-45-5",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:57:32",
           "answers_scraped": 0,
-          "output_dir": "output\\小F全球最理智詹蜜_xiao-f-45-5"
+          "output_dir": "output\\小F全球最理智詹蜜_xiao-f-45-5",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:36:17",
           "answers_scraped": 0,
+          "output_dir": "output\\小F全球最理智詹蜜_xiao-f-45-5",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:11:48",
+          "answers_scraped": 141,
+          "output_dir": "output\\小F全球最理智詹蜜_xiao-f-45-5",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:25:56",
+          "answers_scraped": 30,
           "output_dir": "output\\小F全球最理智詹蜜_xiao-f-45-5"
         }
       ],
@@ -421,12 +552,13 @@
       "user_id": "tian-liang-yao-xi-lian",
       "nickname": "知乎乱弹琴",
       "url": "https://www.zhihu.com/people/tian-liang-yao-xi-lian",
-      "avatar_url": "https://picx.zhimg.com/v2-abed1a8c04700ba7d72b45195223e0ff_l.jpg?source=32738c0c&needBackground=1",
+      "avatar_url": "https://pic1.zhimg.com/v2-abed1a8c04700ba7d72b45195223e0ff_l.jpg?source=32738c0c&needBackground=1",
       "crawl_history": [
         {
           "date": "2026-06-20 22:49:56",
           "answers_scraped": 0,
-          "output_dir": "output\\知乎乱弹琴_tian-liang-yao-xi-lian"
+          "output_dir": "output\\知乎乱弹琴_tian-liang-yao-xi-lian",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 00:36:43",
@@ -436,21 +568,36 @@
         {
           "date": "2026-06-21 06:47:30",
           "answers_scraped": 0,
-          "output_dir": "output\\知乎乱弹琴_tian-liang-yao-xi-lian"
+          "output_dir": "output\\知乎乱弹琴_tian-liang-yao-xi-lian",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:04:28",
           "answers_scraped": 0,
-          "output_dir": "output\\知乎乱弹琴_tian-liang-yao-xi-lian"
+          "output_dir": "output\\知乎乱弹琴_tian-liang-yao-xi-lian",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:57:41",
           "answers_scraped": 0,
-          "output_dir": "output\\知乎乱弹琴_tian-liang-yao-xi-lian"
+          "output_dir": "output\\知乎乱弹琴_tian-liang-yao-xi-lian",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:36:22",
           "answers_scraped": 0,
+          "output_dir": "output\\知乎乱弹琴_tian-liang-yao-xi-lian",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:11:57",
+          "answers_scraped": 140,
+          "output_dir": "output\\知乎乱弹琴_tian-liang-yao-xi-lian",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:26:02",
+          "answers_scraped": 1,
           "output_dir": "output\\知乎乱弹琴_tian-liang-yao-xi-lian"
         }
       ],
@@ -460,12 +607,13 @@
       "user_id": "tang-feng-88-54",
       "nickname": "NoxtanG",
       "url": "https://www.zhihu.com/people/tang-feng-88-54",
-      "avatar_url": "https://pic1.zhimg.com/v2-646ffa26d4cc9fa5946b46fb7ec6d287_l.jpg?source=32738c0c&needBackground=1",
+      "avatar_url": "https://picx.zhimg.com/v2-646ffa26d4cc9fa5946b46fb7ec6d287_l.jpg?source=32738c0c&needBackground=1",
       "crawl_history": [
         {
           "date": "2026-06-20 22:52:12",
           "answers_scraped": 0,
-          "output_dir": "output\\NoxtanG游戏，足球，汽车行业工程师_tang-feng-88-54"
+          "output_dir": "output\\NoxtanG游戏，足球，汽车行业工程师_tang-feng-88-54",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 00:51:17",
@@ -475,21 +623,36 @@
         {
           "date": "2026-06-21 06:47:39",
           "answers_scraped": 0,
-          "output_dir": "output\\NoxtanG游戏，足球，汽车行业工程师_tang-feng-88-54"
+          "output_dir": "output\\NoxtanG游戏，足球，汽车行业工程师_tang-feng-88-54",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:04:33",
           "answers_scraped": 0,
-          "output_dir": "output\\NoxtanG游戏，足球，汽车行业工程师_tang-feng-88-54"
+          "output_dir": "output\\NoxtanG游戏，足球，汽车行业工程师_tang-feng-88-54",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:57:50",
           "answers_scraped": 0,
-          "output_dir": "output\\NoxtanG游戏，足球，汽车行业工程师_tang-feng-88-54"
+          "output_dir": "output\\NoxtanG游戏，足球，汽车行业工程师_tang-feng-88-54",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:36:27",
           "answers_scraped": 0,
+          "output_dir": "output\\NoxtanG游戏，足球，汽车行业工程师_tang-feng-88-54",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:12:07",
+          "answers_scraped": 266,
+          "output_dir": "output\\NoxtanG游戏，足球，汽车行业工程师_tang-feng-88-54",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:26:08",
+          "answers_scraped": 65,
           "output_dir": "output\\NoxtanG游戏，足球，汽车行业工程师_tang-feng-88-54"
         }
       ],
@@ -504,7 +667,8 @@
         {
           "date": "2026-06-20 22:52:47",
           "answers_scraped": 0,
-          "output_dir": "output\\清欢清醒，理性，自知_qing-huan-52-98"
+          "output_dir": "output\\清欢清醒，理性，自知_qing-huan-52-98",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 00:51:31",
@@ -514,21 +678,36 @@
         {
           "date": "2026-06-21 06:47:49",
           "answers_scraped": 0,
-          "output_dir": "output\\清欢清醒，理性，自知_qing-huan-52-98"
+          "output_dir": "output\\清欢清醒，理性，自知_qing-huan-52-98",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:04:39",
           "answers_scraped": 0,
-          "output_dir": "output\\清欢清醒，理性，自知_qing-huan-52-98"
+          "output_dir": "output\\清欢清醒，理性，自知_qing-huan-52-98",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:58:00",
           "answers_scraped": 0,
-          "output_dir": "output\\清欢清醒，理性，自知_qing-huan-52-98"
+          "output_dir": "output\\清欢清醒，理性，自知_qing-huan-52-98",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:36:32",
           "answers_scraped": 0,
+          "output_dir": "output\\清欢清醒，理性，自知_qing-huan-52-98",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:12:16",
+          "answers_scraped": 29,
+          "output_dir": "output\\清欢清醒，理性，自知_qing-huan-52-98",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:26:15",
+          "answers_scraped": 1,
           "output_dir": "output\\清欢清醒，理性，自知_qing-huan-52-98"
         }
       ],
@@ -538,36 +717,47 @@
       "user_id": "jjjjjj-12-85",
       "nickname": "jjjjjj",
       "url": "https://www.zhihu.com/people/jjjjjj-12-85",
-      "avatar_url": "https://pic1.zhimg.com/v2-d24ed870663f60e7a6b4a38a7e3ed4df_l.jpg?source=32738c0c&needBackground=1",
+      "avatar_url": "https://picx.zhimg.com/v2-d24ed870663f60e7a6b4a38a7e3ed4df_l.jpg?source=32738c0c&needBackground=1",
       "crawl_history": [
         {
           "date": "2026-06-20 22:53:08",
           "answers_scraped": 0,
-          "output_dir": "output\\jjjjjj_jjjjjj-12-85"
+          "output_dir": "output\\jjjjjj_jjjjjj-12-85",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 00:51:37",
           "answers_scraped": 0,
-          "output_dir": "output\\jjjjjj_jjjjjj-12-85"
+          "output_dir": "output\\jjjjjj_jjjjjj-12-85",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 06:48:03",
           "answers_scraped": 0,
-          "output_dir": "output\\jjjjjj_jjjjjj-12-85"
+          "output_dir": "output\\jjjjjj_jjjjjj-12-85",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:04:44",
           "answers_scraped": 0,
-          "output_dir": "output\\jjjjjj_jjjjjj-12-85"
+          "output_dir": "output\\jjjjjj_jjjjjj-12-85",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:58:14",
           "answers_scraped": 0,
-          "output_dir": "output\\jjjjjj_jjjjjj-12-85"
+          "output_dir": "output\\jjjjjj_jjjjjj-12-85",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:36:37",
           "answers_scraped": 0,
+          "output_dir": "output\\jjjjjj_jjjjjj-12-85",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:12:30",
+          "answers_scraped": 3,
           "output_dir": "output\\jjjjjj_jjjjjj-12-85"
         }
       ],
@@ -577,17 +767,19 @@
       "user_id": "mig25",
       "nickname": "米格25",
       "url": "https://www.zhihu.com/people/mig25",
-      "avatar_url": "https://pic1.zhimg.com/v2-3abc512b8bd4411fd2f8011a400166c9_l.jpg?source=32738c0c&needBackground=1",
+      "avatar_url": "https://picx.zhimg.com/v2-3abc512b8bd4411fd2f8011a400166c9_l.jpg?source=32738c0c&needBackground=1",
       "crawl_history": [
         {
           "date": "2026-06-19 11:50:13",
           "answers_scraped": 80,
-          "output_dir": "output\\米格二十五_mig25"
+          "output_dir": "output\\米格二十五_mig25",
+          "scroll_only": true
         },
         {
           "date": "2026-06-20 22:54:46",
           "answers_scraped": 0,
-          "output_dir": "output\\米格二十五_mig25"
+          "output_dir": "output\\米格二十五_mig25",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 00:52:30",
@@ -597,21 +789,36 @@
         {
           "date": "2026-06-21 06:48:12",
           "answers_scraped": 0,
-          "output_dir": "output\\米格二十五_mig25"
+          "output_dir": "output\\米格二十五_mig25",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:04:50",
           "answers_scraped": 0,
-          "output_dir": "output\\米格二十五_mig25"
+          "output_dir": "output\\米格二十五_mig25",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:58:24",
           "answers_scraped": 0,
-          "output_dir": "output\\米格二十五_mig25"
+          "output_dir": "output\\米格二十五_mig25",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:36:43",
           "answers_scraped": 0,
+          "output_dir": "output\\米格二十五_mig25",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:12:40",
+          "answers_scraped": 210,
+          "output_dir": "output\\米格二十五_mig25",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:26:26",
+          "answers_scraped": 4,
           "output_dir": "output\\米格二十五_mig25"
         }
       ],
@@ -621,12 +828,13 @@
       "user_id": "chen-xiao-87-91",
       "nickname": "chen xiao",
       "url": "https://www.zhihu.com/people/chen-xiao-87-91",
-      "avatar_url": "https://picx.zhimg.com/5accac35db0461f5aefefbc0601a64b5_l.jpg?source=32738c0c&needBackground=1",
+      "avatar_url": "https://pica.zhimg.com/5accac35db0461f5aefefbc0601a64b5_l.jpg?source=32738c0c&needBackground=1",
       "crawl_history": [
         {
           "date": "2026-06-20 22:56:23",
           "answers_scraped": 0,
-          "output_dir": "output\\chen xiao寡人简介岂可如此之草率_chen-xiao-87-91"
+          "output_dir": "output\\chen xiao寡人简介岂可如此之草率_chen-xiao-87-91",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 00:53:41",
@@ -636,21 +844,36 @@
         {
           "date": "2026-06-21 06:48:22",
           "answers_scraped": 0,
-          "output_dir": "output\\chen xiao寡人简介岂可如此之草率_chen-xiao-87-91"
+          "output_dir": "output\\chen xiao寡人简介岂可如此之草率_chen-xiao-87-91",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:04:55",
           "answers_scraped": 0,
-          "output_dir": "output\\chen xiao寡人简介岂可如此之草率_chen-xiao-87-91"
+          "output_dir": "output\\chen xiao寡人简介岂可如此之草率_chen-xiao-87-91",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:58:34",
           "answers_scraped": 0,
-          "output_dir": "output\\chen xiao寡人简介岂可如此之草率_chen-xiao-87-91"
+          "output_dir": "output\\chen xiao寡人简介岂可如此之草率_chen-xiao-87-91",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:36:48",
           "answers_scraped": 0,
+          "output_dir": "output\\chen xiao寡人简介岂可如此之草率_chen-xiao-87-91",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:12:50",
+          "answers_scraped": 193,
+          "output_dir": "output\\chen xiao寡人简介岂可如此之草率_chen-xiao-87-91",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:26:31",
+          "answers_scraped": 5,
           "output_dir": "output\\chen xiao寡人简介岂可如此之草率_chen-xiao-87-91"
         }
       ],
@@ -660,12 +883,13 @@
       "user_id": "ppgg-68",
       "nickname": "ppgg",
       "url": "https://www.zhihu.com/people/ppgg-68",
-      "avatar_url": "https://pica.zhimg.com/v2-abed1a8c04700ba7d72b45195223e0ff_l.jpg?source=32738c0c&needBackground=1",
+      "avatar_url": "https://pic1.zhimg.com/v2-abed1a8c04700ba7d72b45195223e0ff_l.jpg?source=32738c0c&needBackground=1",
       "crawl_history": [
         {
           "date": "2026-06-20 22:59:59",
           "answers_scraped": 0,
-          "output_dir": "output\\ppgg_ppgg-68"
+          "output_dir": "output\\ppgg_ppgg-68",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 00:56:10",
@@ -675,21 +899,36 @@
         {
           "date": "2026-06-21 06:48:31",
           "answers_scraped": 0,
-          "output_dir": "output\\ppgg_ppgg-68"
+          "output_dir": "output\\ppgg_ppgg-68",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:05:01",
           "answers_scraped": 0,
-          "output_dir": "output\\ppgg_ppgg-68"
+          "output_dir": "output\\ppgg_ppgg-68",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:58:43",
           "answers_scraped": 0,
-          "output_dir": "output\\ppgg_ppgg-68"
+          "output_dir": "output\\ppgg_ppgg-68",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:36:53",
           "answers_scraped": 0,
+          "output_dir": "output\\ppgg_ppgg-68",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:12:59",
+          "answers_scraped": 409,
+          "output_dir": "output\\ppgg_ppgg-68",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:26:37",
+          "answers_scraped": 11,
           "output_dir": "output\\ppgg_ppgg-68"
         }
       ],
@@ -699,12 +938,13 @@
       "user_id": "gong-xiao-yu-55",
       "nickname": "龚小雨",
       "url": "https://www.zhihu.com/people/gong-xiao-yu-55",
-      "avatar_url": "https://picx.zhimg.com/v2-abed1a8c04700ba7d72b45195223e0ff_l.jpg?source=32738c0c&needBackground=1",
+      "avatar_url": "https://pic1.zhimg.com/v2-abed1a8c04700ba7d72b45195223e0ff_l.jpg?source=32738c0c&needBackground=1",
       "crawl_history": [
         {
           "date": "2026-06-20 23:00:22",
           "answers_scraped": 0,
-          "output_dir": "output\\龚小雨_gong-xiao-yu-55"
+          "output_dir": "output\\龚小雨_gong-xiao-yu-55",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 00:56:38",
@@ -714,21 +954,35 @@
         {
           "date": "2026-06-21 06:48:50",
           "answers_scraped": 0,
-          "output_dir": "output\\龚小雨_gong-xiao-yu-55"
+          "output_dir": "output\\龚小雨_gong-xiao-yu-55",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:05:06",
           "answers_scraped": 0,
-          "output_dir": "output\\龚小雨_gong-xiao-yu-55"
+          "output_dir": "output\\龚小雨_gong-xiao-yu-55",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:59:04",
           "answers_scraped": 0,
-          "output_dir": "output\\龚小雨_gong-xiao-yu-55"
+          "output_dir": "output\\龚小雨_gong-xiao-yu-55",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:36:59",
           "answers_scraped": 0,
+          "output_dir": "output\\龚小雨_gong-xiao-yu-55",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:13:14",
+          "answers_scraped": 2,
+          "output_dir": "output\\龚小雨_gong-xiao-yu-55"
+        },
+        {
+          "date": "2026-06-21 10:26:42",
+          "answers_scraped": 2,
           "output_dir": "output\\龚小雨_gong-xiao-yu-55"
         }
       ],
@@ -738,12 +992,13 @@
       "user_id": "dang-zheng-50",
       "nickname": "dang-zheng-50",
       "url": "https://www.zhihu.com/people/dang-zheng-50",
-      "avatar_url": "https://pic1.zhimg.com/v2-abed1a8c04700ba7d72b45195223e0ff_l.jpg?source=32738c0c&needBackground=1",
+      "avatar_url": "https://picx.zhimg.com/v2-abed1a8c04700ba7d72b45195223e0ff_l.jpg?source=32738c0c&needBackground=1",
       "crawl_history": [
         {
           "date": "2026-06-20 23:02:03",
           "answers_scraped": 0,
-          "output_dir": "output\\拉格纳罗斯_dang-zheng-50"
+          "output_dir": "output\\拉格纳罗斯_dang-zheng-50",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 00:57:27",
@@ -753,21 +1008,36 @@
         {
           "date": "2026-06-21 06:49:01",
           "answers_scraped": 0,
-          "output_dir": "output\\拉格纳罗斯_dang-zheng-50"
+          "output_dir": "output\\拉格纳罗斯_dang-zheng-50",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:05:12",
           "answers_scraped": 0,
-          "output_dir": "output\\拉格纳罗斯_dang-zheng-50"
+          "output_dir": "output\\拉格纳罗斯_dang-zheng-50",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:59:13",
           "answers_scraped": 0,
-          "output_dir": "output\\拉格纳罗斯_dang-zheng-50"
+          "output_dir": "output\\拉格纳罗斯_dang-zheng-50",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:37:04",
           "answers_scraped": 0,
+          "output_dir": "output\\拉格纳罗斯_dang-zheng-50",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:13:24",
+          "answers_scraped": 217,
+          "output_dir": "output\\拉格纳罗斯_dang-zheng-50",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:26:48",
+          "answers_scraped": 4,
           "output_dir": "output\\拉格纳罗斯_dang-zheng-50"
         }
       ],
@@ -782,7 +1052,8 @@
         {
           "date": "2026-06-20 23:06:41",
           "answers_scraped": 0,
-          "output_dir": "output\\巫凉菌普通的上班族+游戏玩家_wu-liang-jun-25"
+          "output_dir": "output\\巫凉菌普通的上班族+游戏玩家_wu-liang-jun-25",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 01:02:31",
@@ -792,21 +1063,36 @@
         {
           "date": "2026-06-21 06:49:10",
           "answers_scraped": 0,
-          "output_dir": "output\\巫凉菌普通的上班族+游戏玩家_wu-liang-jun-25"
+          "output_dir": "output\\巫凉菌普通的上班族+游戏玩家_wu-liang-jun-25",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:05:17",
           "answers_scraped": 0,
-          "output_dir": "output\\巫凉菌普通的上班族+游戏玩家_wu-liang-jun-25"
+          "output_dir": "output\\巫凉菌普通的上班族+游戏玩家_wu-liang-jun-25",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:59:23",
           "answers_scraped": 0,
-          "output_dir": "output\\巫凉菌普通的上班族+游戏玩家_wu-liang-jun-25"
+          "output_dir": "output\\巫凉菌普通的上班族+游戏玩家_wu-liang-jun-25",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:37:09",
           "answers_scraped": 0,
+          "output_dir": "output\\巫凉菌普通的上班族+游戏玩家_wu-liang-jun-25",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:13:33",
+          "answers_scraped": 477,
+          "output_dir": "output\\巫凉菌普通的上班族+游戏玩家_wu-liang-jun-25",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:26:53",
+          "answers_scraped": 19,
           "output_dir": "output\\巫凉菌普通的上班族+游戏玩家_wu-liang-jun-25"
         }
       ],
@@ -816,27 +1102,31 @@
       "user_id": "tian-jin-qi-tong-wei",
       "nickname": "游侠",
       "url": "https://www.zhihu.com/people/tian-jin-qi-tong-wei",
-      "avatar_url": "https://picx.zhimg.com/v2-aa76e3266048eab79cd633a6a7b98de3_l.jpg?source=32738c0c&needBackground=1",
+      "avatar_url": "https://pica.zhimg.com/v2-aa76e3266048eab79cd633a6a7b98de3_l.jpg?source=32738c0c&needBackground=1",
       "crawl_history": [
         {
           "date": "2026-06-21 06:49:26",
           "answers_scraped": 0,
-          "output_dir": "output\\游侠孤帆远影碧空尽，唯见长江天际流。_tian-jin-qi-tong-wei"
+          "output_dir": "output\\游侠孤帆远影碧空尽，唯见长江天际流。_tian-jin-qi-tong-wei",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:05:32",
           "answers_scraped": 0,
-          "output_dir": "output\\游侠孤帆远影碧空尽，唯见长江天际流。_tian-jin-qi-tong-wei"
+          "output_dir": "output\\游侠孤帆远影碧空尽，唯见长江天际流。_tian-jin-qi-tong-wei",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:59:41",
           "answers_scraped": 0,
-          "output_dir": "output\\游侠孤帆远影碧空尽，唯见长江天际流。_tian-jin-qi-tong-wei"
+          "output_dir": "output\\游侠孤帆远影碧空尽，唯见长江天际流。_tian-jin-qi-tong-wei",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:37:29",
           "answers_scraped": 0,
-          "output_dir": "output\\游侠孤帆远影碧空尽，唯见长江天际流。_tian-jin-qi-tong-wei"
+          "output_dir": "output\\游侠孤帆远影碧空尽，唯见长江天际流。_tian-jin-qi-tong-wei",
+          "scroll_only": true
         }
       ],
       "answers_count": 0
@@ -845,12 +1135,13 @@
       "user_id": "jue-qian-hui-16",
       "nickname": "绝千回",
       "url": "https://www.zhihu.com/people/jue-qian-hui-16",
-      "avatar_url": "https://picx.zhimg.com/a9c1233ec6c12f94f06171263661e9ee_l.jpg?source=32738c0c&needBackground=1",
+      "avatar_url": "https://pica.zhimg.com/a9c1233ec6c12f94f06171263661e9ee_l.jpg?source=32738c0c&needBackground=1",
       "crawl_history": [
         {
           "date": "2026-06-21 06:52:55",
           "answers_scraped": 0,
-          "output_dir": "output\\绝千回_jue-qian-hui-16"
+          "output_dir": "output\\绝千回_jue-qian-hui-16",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:06:08",
@@ -860,11 +1151,24 @@
         {
           "date": "2026-06-21 08:59:52",
           "answers_scraped": 0,
-          "output_dir": "output\\绝千回_jue-qian-hui-16"
+          "output_dir": "output\\绝千回_jue-qian-hui-16",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:37:34",
           "answers_scraped": 0,
+          "output_dir": "output\\绝千回_jue-qian-hui-16",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:14:00",
+          "answers_scraped": 286,
+          "output_dir": "output\\绝千回_jue-qian-hui-16",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:27:15",
+          "answers_scraped": 3,
           "output_dir": "output\\绝千回_jue-qian-hui-16"
         }
       ],
@@ -874,12 +1178,13 @@
       "user_id": "zhang-yu-55-10",
       "nickname": "张春申",
       "url": "https://www.zhihu.com/people/zhang-yu-55-10",
-      "avatar_url": "https://pic1.zhimg.com/60f4572549fbbf94e4e98f006a00d5e8_l.jpg?source=32738c0c&needBackground=1",
+      "avatar_url": "https://pica.zhimg.com/60f4572549fbbf94e4e98f006a00d5e8_l.jpg?source=32738c0c&needBackground=1",
       "crawl_history": [
         {
           "date": "2026-06-21 06:57:15",
           "answers_scraped": 0,
-          "output_dir": "output\\张春申喜欢健身，看杂书，电子产品，吃。。。_zhang-yu-55-10"
+          "output_dir": "output\\张春申喜欢健身，看杂书，电子产品，吃。。。_zhang-yu-55-10",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:08:08",
@@ -889,11 +1194,24 @@
         {
           "date": "2026-06-21 09:00:02",
           "answers_scraped": 0,
-          "output_dir": "output\\张春申喜欢健身，看杂书，电子产品，吃。。。_zhang-yu-55-10"
+          "output_dir": "output\\张春申喜欢健身，看杂书，电子产品，吃。。。_zhang-yu-55-10",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:37:39",
           "answers_scraped": 0,
+          "output_dir": "output\\张春申喜欢健身，看杂书，电子产品，吃。。。_zhang-yu-55-10",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:14:10",
+          "answers_scraped": 363,
+          "output_dir": "output\\张春申喜欢健身，看杂书，电子产品，吃。。。_zhang-yu-55-10",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:27:21",
+          "answers_scraped": 10,
           "output_dir": "output\\张春申喜欢健身，看杂书，电子产品，吃。。。_zhang-yu-55-10"
         }
       ],
@@ -908,7 +1226,8 @@
         {
           "date": "2026-06-21 06:57:49",
           "answers_scraped": 0,
-          "output_dir": "output\\节能型小约翰_xyhosts"
+          "output_dir": "output\\节能型小约翰_xyhosts",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:09:14",
@@ -918,11 +1237,24 @@
         {
           "date": "2026-06-21 09:00:11",
           "answers_scraped": 0,
-          "output_dir": "output\\momo_xyhosts"
+          "output_dir": "output\\momo_xyhosts",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:37:44",
           "answers_scraped": 0,
+          "output_dir": "output\\momo_xyhosts",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:14:19",
+          "answers_scraped": 30,
+          "output_dir": "output\\momo_xyhosts",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:27:28",
+          "answers_scraped": 5,
           "output_dir": "output\\momo_xyhosts"
         }
       ],
@@ -932,12 +1264,13 @@
       "user_id": "gou-li-59-84",
       "nickname": "苟利",
       "url": "https://www.zhihu.com/people/gou-li-59-84",
-      "avatar_url": "https://picx.zhimg.com/v2-b2f40f4a5fb205589d1c9a3fc8d4d86d_l.jpg?source=32738c0c&needBackground=1",
+      "avatar_url": "https://pic1.zhimg.com/v2-b2f40f4a5fb205589d1c9a3fc8d4d86d_l.jpg?source=32738c0c&needBackground=1",
       "crawl_history": [
         {
           "date": "2026-06-21 07:04:28",
           "answers_scraped": 0,
-          "output_dir": "output\\苟利抽象的本质是一种讽刺艺术，但不需要讽刺具体的事情。_gou-li-59-84"
+          "output_dir": "output\\苟利抽象的本质是一种讽刺艺术，但不需要讽刺具体的事情。_gou-li-59-84",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:11:04",
@@ -947,11 +1280,24 @@
         {
           "date": "2026-06-21 09:00:21",
           "answers_scraped": 0,
-          "output_dir": "output\\苟利抽象的本质是一种讽刺艺术，但不需要讽刺具体的事情。_gou-li-59-84"
+          "output_dir": "output\\苟利抽象的本质是一种讽刺艺术，但不需要讽刺具体的事情。_gou-li-59-84",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:37:50",
           "answers_scraped": 0,
+          "output_dir": "output\\苟利抽象的本质是一种讽刺艺术，但不需要讽刺具体的事情。_gou-li-59-84",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:14:29",
+          "answers_scraped": 582,
+          "output_dir": "output\\苟利抽象的本质是一种讽刺艺术，但不需要讽刺具体的事情。_gou-li-59-84",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:27:34",
+          "answers_scraped": 8,
           "output_dir": "output\\苟利抽象的本质是一种讽刺艺术，但不需要讽刺具体的事情。_gou-li-59-84"
         }
       ],
@@ -966,7 +1312,8 @@
         {
           "date": "2026-06-21 07:06:16",
           "answers_scraped": 0,
-          "output_dir": "output\\momo保密_wan-zai-lin"
+          "output_dir": "output\\momo保密_wan-zai-lin",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:12:49",
@@ -976,11 +1323,24 @@
         {
           "date": "2026-06-21 09:00:30",
           "answers_scraped": 0,
-          "output_dir": "output\\momo保密_wan-zai-lin"
+          "output_dir": "output\\momo保密_wan-zai-lin",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:37:55",
           "answers_scraped": 0,
+          "output_dir": "output\\momo保密_wan-zai-lin",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:14:39",
+          "answers_scraped": 167,
+          "output_dir": "output\\momo保密_wan-zai-lin",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:27:40",
+          "answers_scraped": 8,
           "output_dir": "output\\momo保密_wan-zai-lin"
         }
       ],
@@ -990,12 +1350,13 @@
       "user_id": "yin-shen-yu-zhong",
       "nickname": "隐身雨中",
       "url": "https://www.zhihu.com/people/yin-shen-yu-zhong",
-      "avatar_url": "https://pica.zhimg.com/a75cdd54cfcd3bdeab4a0dae8e3e7a8e_l.jpg?source=32738c0c&needBackground=1",
+      "avatar_url": "https://pic1.zhimg.com/a75cdd54cfcd3bdeab4a0dae8e3e7a8e_l.jpg?source=32738c0c&needBackground=1",
       "crawl_history": [
         {
           "date": "2026-06-21 07:07:25",
           "answers_scraped": 0,
-          "output_dir": "output\\隐身雨中元宇宙里的小韭菜~_yin-shen-yu-zhong"
+          "output_dir": "output\\隐身雨中元宇宙里的小韭菜~_yin-shen-yu-zhong",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:13:02",
@@ -1005,11 +1366,24 @@
         {
           "date": "2026-06-21 09:00:39",
           "answers_scraped": 0,
-          "output_dir": "output\\隐身雨中元宇宙里的小韭菜~_yin-shen-yu-zhong"
+          "output_dir": "output\\隐身雨中元宇宙里的小韭菜~_yin-shen-yu-zhong",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:38:01",
           "answers_scraped": 0,
+          "output_dir": "output\\隐身雨中元宇宙里的小韭菜~_yin-shen-yu-zhong",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:14:48",
+          "answers_scraped": 105,
+          "output_dir": "output\\隐身雨中元宇宙里的小韭菜~_yin-shen-yu-zhong",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:27:46",
+          "answers_scraped": 1,
           "output_dir": "output\\隐身雨中元宇宙里的小韭菜~_yin-shen-yu-zhong"
         }
       ],
@@ -1019,12 +1393,13 @@
       "user_id": "bu-shi-bu-ming-bai-65",
       "nickname": "不是不明白",
       "url": "https://www.zhihu.com/people/bu-shi-bu-ming-bai-65",
-      "avatar_url": "https://pica.zhimg.com/v2-497e8b5cfbc2684a635df247d867934e_l.jpg?source=32738c0c&needBackground=1",
+      "avatar_url": "https://picx.zhimg.com/v2-497e8b5cfbc2684a635df247d867934e_l.jpg?source=32738c0c&needBackground=1",
       "crawl_history": [
         {
           "date": "2026-06-21 07:08:12",
           "answers_scraped": 0,
-          "output_dir": "output\\不是不明白_bu-shi-bu-ming-bai-65"
+          "output_dir": "output\\不是不明白_bu-shi-bu-ming-bai-65",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:13:53",
@@ -1034,11 +1409,24 @@
         {
           "date": "2026-06-21 09:00:49",
           "answers_scraped": 0,
-          "output_dir": "output\\不是不明白_bu-shi-bu-ming-bai-65"
+          "output_dir": "output\\不是不明白_bu-shi-bu-ming-bai-65",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:38:06",
           "answers_scraped": 0,
+          "output_dir": "output\\不是不明白_bu-shi-bu-ming-bai-65",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:14:59",
+          "answers_scraped": 47,
+          "output_dir": "output\\不是不明白_bu-shi-bu-ming-bai-65",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:27:53",
+          "answers_scraped": 4,
           "output_dir": "output\\不是不明白_bu-shi-bu-ming-bai-65"
         }
       ],
@@ -1048,12 +1436,13 @@
       "user_id": "luting-mi",
       "nickname": "西克里特",
       "url": "https://www.zhihu.com/people/luting-mi",
-      "avatar_url": "https://picx.zhimg.com/v2-daed5e59ab8a614887aeea8d6e09f157_l.jpg?source=32738c0c&needBackground=1",
+      "avatar_url": "https://pic1.zhimg.com/v2-daed5e59ab8a614887aeea8d6e09f157_l.jpg?source=32738c0c&needBackground=1",
       "crawl_history": [
         {
           "date": "2026-06-21 07:09:10",
           "answers_scraped": 0,
-          "output_dir": "output\\希克里特_luting-mi"
+          "output_dir": "output\\希克里特_luting-mi",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:14:33",
@@ -1063,11 +1452,24 @@
         {
           "date": "2026-06-21 09:00:57",
           "answers_scraped": 0,
-          "output_dir": "output\\希克里特_luting-mi"
+          "output_dir": "output\\希克里特_luting-mi",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:38:11",
           "answers_scraped": 0,
+          "output_dir": "output\\希克里特_luting-mi",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:15:08",
+          "answers_scraped": 67,
+          "output_dir": "output\\希克里特_luting-mi",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:27:59",
+          "answers_scraped": 3,
           "output_dir": "output\\希克里特_luting-mi"
         }
       ],
@@ -1077,12 +1479,13 @@
       "user_id": "ji-ran-99-95",
       "nickname": "丰饶民",
       "url": "https://www.zhihu.com/people/ji-ran-99-95",
-      "avatar_url": "https://pica.zhimg.com/v2-abed1a8c04700ba7d72b45195223e0ff_l.jpg?source=32738c0c&needBackground=1",
+      "avatar_url": "https://pic1.zhimg.com/v2-abed1a8c04700ba7d72b45195223e0ff_l.jpg?source=32738c0c&needBackground=1",
       "crawl_history": [
         {
           "date": "2026-06-21 07:12:31",
           "answers_scraped": 0,
-          "output_dir": "output\\丰饶民_ji-ran-99-95"
+          "output_dir": "output\\丰饶民_ji-ran-99-95",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:15:11",
@@ -1092,11 +1495,24 @@
         {
           "date": "2026-06-21 09:01:06",
           "answers_scraped": 0,
-          "output_dir": "output\\丰饶民_ji-ran-99-95"
+          "output_dir": "output\\丰饶民_ji-ran-99-95",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:38:16",
           "answers_scraped": 0,
+          "output_dir": "output\\丰饶民_ji-ran-99-95",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:15:17",
+          "answers_scraped": 342,
+          "output_dir": "output\\丰饶民_ji-ran-99-95",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:28:05",
+          "answers_scraped": 3,
           "output_dir": "output\\丰饶民_ji-ran-99-95"
         }
       ],
@@ -1106,12 +1522,13 @@
       "user_id": "lao-na-lai-liao-wa",
       "nickname": "老衲来了哇",
       "url": "https://www.zhihu.com/people/lao-na-lai-liao-wa",
-      "avatar_url": "https://pic1.zhimg.com/v2-abed1a8c04700ba7d72b45195223e0ff_l.jpg?source=32738c0c&needBackground=1",
+      "avatar_url": "https://picx.zhimg.com/v2-abed1a8c04700ba7d72b45195223e0ff_l.jpg?source=32738c0c&needBackground=1",
       "crawl_history": [
         {
           "date": "2026-06-21 07:13:24",
           "answers_scraped": 0,
-          "output_dir": "output\\老衲来了哇_lao-na-lai-liao-wa"
+          "output_dir": "output\\老衲来了哇_lao-na-lai-liao-wa",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:16:00",
@@ -1121,11 +1538,24 @@
         {
           "date": "2026-06-21 09:01:15",
           "answers_scraped": 0,
-          "output_dir": "output\\老衲来了哇_lao-na-lai-liao-wa"
+          "output_dir": "output\\老衲来了哇_lao-na-lai-liao-wa",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:38:22",
           "answers_scraped": 0,
+          "output_dir": "output\\老衲来了哇_lao-na-lai-liao-wa",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:15:27",
+          "answers_scraped": 63,
+          "output_dir": "output\\老衲来了哇_lao-na-lai-liao-wa",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:28:11",
+          "answers_scraped": 4,
           "output_dir": "output\\老衲来了哇_lao-na-lai-liao-wa"
         }
       ],
@@ -1140,7 +1570,8 @@
         {
           "date": "2026-06-21 07:14:27",
           "answers_scraped": 0,
-          "output_dir": "output\\社会你熊熊老司机爱开车和开车_chi-xi-18-81"
+          "output_dir": "output\\社会你熊熊老司机爱开车和开车_chi-xi-18-81",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:19:08",
@@ -1150,11 +1581,24 @@
         {
           "date": "2026-06-21 09:01:24",
           "answers_scraped": 0,
-          "output_dir": "output\\社会你熊熊老司机爱开车和开车_chi-xi-18-81"
+          "output_dir": "output\\社会你熊熊老司机爱开车和开车_chi-xi-18-81",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:38:27",
           "answers_scraped": 0,
+          "output_dir": "output\\社会你熊熊老司机爱开车和开车_chi-xi-18-81",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:15:36",
+          "answers_scraped": 82,
+          "output_dir": "output\\社会你熊熊老司机爱开车和开车_chi-xi-18-81",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:28:17",
+          "answers_scraped": 14,
           "output_dir": "output\\社会你熊熊老司机爱开车和开车_chi-xi-18-81"
         }
       ],
@@ -1164,12 +1608,13 @@
       "user_id": "penny-38-72-89",
       "nickname": "penny",
       "url": "https://www.zhihu.com/people/penny-38-72-89",
-      "avatar_url": "https://picx.zhimg.com/v2-ff86445c087352e89c07665843e23606_l.jpg?source=32738c0c&needBackground=1",
+      "avatar_url": "https://pic1.zhimg.com/v2-ff86445c087352e89c07665843e23606_l.jpg?source=32738c0c&needBackground=1",
       "crawl_history": [
         {
           "date": "2026-06-21 07:34:46",
           "answers_scraped": 0,
-          "output_dir": "output\\Penny混吃等死，没死继续混_penny-38-72-89"
+          "output_dir": "output\\Penny混吃等死，没死继续混_penny-38-72-89",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 08:24:13",
@@ -1179,16 +1624,29 @@
         {
           "date": "2026-06-21 09:01:33",
           "answers_scraped": 0,
-          "output_dir": "output\\Penny混吃等死，没死继续混_penny-38-72-89"
+          "output_dir": "output\\Penny混吃等死，没死继续混_penny-38-72-89",
+          "scroll_only": true
         },
         {
           "date": "2026-06-21 09:38:32",
           "answers_scraped": 0,
+          "output_dir": "output\\Penny混吃等死，没死继续混_penny-38-72-89",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:15:46",
+          "answers_scraped": 1166,
+          "output_dir": "output\\Penny混吃等死，没死继续混_penny-38-72-89",
+          "scroll_only": true
+        },
+        {
+          "date": "2026-06-21 10:28:23",
+          "answers_scraped": 23,
           "output_dir": "output\\Penny混吃等死，没死继续混_penny-38-72-89"
         }
       ],
       "answers_count": 2240
     }
   ],
-  "updated": "2026-06-21 09:38:32"
+  "updated": "2026-06-21 10:35:27"
 }

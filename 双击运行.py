@@ -2110,16 +2110,18 @@ class ZhihuCrawlerGUI:
                                               keyword=keyword,
                                               scroll_only=scroll_only)
                         results.append(r)
-                        # 记录爬取历史（用 total 累计总数，非 success 增量）
-                        total_after = r.get('total', 0)
-                        if total_after > 0:
-                            from id_manager import get_id_manager
-                            mgr = get_id_manager()
-                            mgr.add_crawl_record(
-                                uid,
-                                total_after,
-                                r.get('output_dir', str(Path(self._cfg.output_dir) / uid))
-                            )
+                        # 记录爬取历史（滚屏阶段不记录，它只收集链接不生成 MD）
+                        if not scroll_only:
+                            total_after = r.get('total', 0)
+                            if total_after > 0:
+                                from id_manager import get_id_manager
+                                mgr = get_id_manager()
+                                mgr.add_crawl_record(
+                                    uid,
+                                    total_after,
+                                    r.get('output_dir', str(Path(self._cfg.output_dir) / uid)),
+                                    scroll_only=False
+                                )
                     except Exception as e:
                         self.root.after(0, self._log, f"{label_prefix} {uid} 失败: {e}", 'error')
                         import traceback
