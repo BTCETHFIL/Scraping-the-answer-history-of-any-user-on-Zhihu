@@ -204,10 +204,22 @@ def get_output_path(output_dir: str, user_id: str, nickname: str = "") -> Path:
     dirname = get_user_dirname(user_id, nickname)
     p = Path(output_dir) / dirname
 
-    # 迁移：如果旧目录 {user_id} 存在，将内容移入新目录
-    old_p = Path(output_dir) / user_id
-    if old_p.exists() and old_p.resolve() != p.resolve():
-        _migrate_dir(old_p, p)
+    output_root = Path(output_dir)
+
+    # ── 合并所有同 userId 的历史目录到当前目录 ──
+    # 扫描 output 下所有匹配 *_user_id 或纯 user_id 的目录
+    sibling_dirs = []
+    for d in output_root.iterdir():
+        if not d.is_dir():
+            continue
+        d_name = d.name
+        # 匹配：纯 user_id 或 以 _user_id 结尾的目录
+        if d_name == user_id or d_name.endswith(f"_{user_id}"):
+            if d.resolve() != p.resolve():
+                sibling_dirs.append(d)
+
+    for old_dir in sibling_dirs:
+        _migrate_dir(old_dir, p)
 
     p.mkdir(parents=True, exist_ok=True)
     return p

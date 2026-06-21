@@ -1905,12 +1905,28 @@ def scrape_user_profile(page: Page, user_id: str) -> dict:
             if follower_el and result['followers'] == 0:
                 result['followers'] = _parse_zhihu_number(follower_el.get_text(strip=True))
 
-            # 昵称
+            # 昵称（只取 span 内的纯文本，排除混入的个人简介/签名）
             name_el = soup.select_one('[class*="ProfileHeader-name"],'
                                        ' .ProfileHeader-title,'
                                        ' [class*="UserLink-link"]')
             if name_el:
-                result['nickname'] = name_el.get_text(strip=True)
+                raw_name = name_el.get_text(strip=True)
+                # 如果昵称异常长（>30字符），大概率混入了个人简介
+                # 尝试只取第一个span/text节点
+                if len(raw_name) > 30:
+                    first_span = name_el.select_one('span')
+                    if first_span:
+                        raw_name = first_span.get_text(strip=True)
+                    else:
+                        # 取元素直接文本节点（不递归子元素）
+                        direct_text = ''.join(
+                            node.strip() for node in name_el.children
+                            if hasattr(node, 'name') is False
+                        ).strip()
+                        if direct_text and len(direct_text) <= 30:
+                            raw_name = direct_text
+                        # 否则保留原始值（截断由 get_user_dirname 处理）
+                result['nickname'] = raw_name
 
             # 头像
             avatar_el = soup.select_one('[class*="Avatar"] img,'
